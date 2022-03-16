@@ -9,6 +9,9 @@
 
 // SERVER
 
+// $ ./sdstored etc/sdstored.conf bin/sdstore-transformations
+
 int main(int argc, char *argv[]) {
     if(argc < 3) perror("falta argumentos ");
+
 }

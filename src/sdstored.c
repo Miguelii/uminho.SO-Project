@@ -60,14 +60,31 @@ int main(int argc, char *argv[]) {
         } while((token = strtok(NULL,"\n")));
     }
 
-    //debug
+    close(fd_conf);
+
+    /*debug
     printf("%d \n", maxnop);
     printf("%d \n", maxbcompress);
     printf("%d \n", maxbdecompress);
     printf("%d \n", maxgcompress);
     printf("%d \n", maxgdecompress);
     printf("%d \n", maxencrypt);
-    printf("%d \n", maxdencrypt);
+    printf("%d \n", maxdencrypt); */
 
 
+    //Abrir pipe
+    char comando[1024];
+
+    int client_server_fifo = open("/tmp/client_server_fifo",O_RDONLY);
+
+    int leitura = read(client_server_fifo,comando,sizeof(comando));
+    if(leitura == -1) perror("Erro no read");
+
+    //Ler do pipe do cliente
+    while(1) {
+        if(leitura > 0 && (strcmp(comando,"status") == 0)) {
+            printf("Pipe lido! \n");
+        }
+
+    }
 }

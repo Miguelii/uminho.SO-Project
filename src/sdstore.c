@@ -32,8 +32,12 @@ int main(int argc, char *argv[]) {
             write(1,buffer,leitura);
             if(strstr(buffer, "\0")) break;
         }
-        printf("write! \n");
         close(server_client_fifo);
+    }
+
+    if(strcmp(argv[1],"proc-file") == 0) {
+        //int prioridade = atoi(argv[2]);
+        
     }
 }
 

@@ -43,7 +43,7 @@ int main(int argc, char *argv[]) {
 
     while((n = read(fd_conf,buffer,sizeof(buffer))) > 0) {
         char *token = strtok(buffer, "\n");  // breaks buffer into a series of tokens using the delimiter \n
-
+        
         do {
             char *aux = strdup(token); //copia a string token para aux
             char *found = strsep(&aux, " "); // seleciona a string de aux até ao separador " "
@@ -81,15 +81,6 @@ int main(int argc, char *argv[]) {
 
     close(fd_conf);
 
-    /*debug
-    printf("%d \n", maxnop);
-    printf("%d \n", maxbcompress);
-    printf("%d \n", maxbdecompress);
-    printf("%d \n", maxgcompress);
-    printf("%d \n", maxgdecompress);
-    printf("%d \n", maxencrypt);
-    printf("%d \n", maxdencrypt); */
-
     //cria os named pipes
     int client_server_fifo;
     int server_client_fifo;
@@ -126,7 +117,6 @@ int main(int argc, char *argv[]) {
             //printf("Pipe lido! \n");
             char mensagem[5000];
             char res[5000];
-            res[0] = 0;
 
             sprintf(mensagem, "Transf nop: 0/%d (Running/Max) \n",maxnop);
             strcat(res,mensagem);
@@ -145,5 +135,13 @@ int main(int argc, char *argv[]) {
             strcat(res,"\0");
             write(server_client_fifo,res,strlen(res));
         }
+
+        if(leitura > 0 && (strcmp(comando,"proc-file") == 0)) {
+            
+        }
+
+        unlink("/tmp/server_client_fifo");
+        unlink("/tmp/client_server_fifo");
+        printf("Server close\n");
     }
 }

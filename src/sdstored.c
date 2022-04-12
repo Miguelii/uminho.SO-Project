@@ -17,7 +17,7 @@ char *nop_f, *bcompress_f, *bdecompress_f, *gcompress_f, *gdecompress_f, *encryp
 
 int maxnop, maxbcompress, maxbdecompress, maxgcompress, maxgdecompress, maxencrypt, maxdecrypt;
 int nop_cur, bcompress_cur, bdecompress_cur, gcompress_cur, gdecompress_cur, encrypt_cur, decrypt_cur;
-char *dir; //Diretoria dos executáveis dos filtros.
+
 
 void sigint_handler (int signum) {
     int status;
@@ -97,25 +97,71 @@ int check_disponibilidade (char *command) {
     return 1;
 }
 
-//Dependendo do filtro pedido no comando, retorna uma string com a diretoria e nome do executável com o correspondente filtro.
-char *assignExec(char *nome) {
-    if (!strcmp(nome, "nop")) return strdup(nop_f);
-    if (!strcmp(nome, "bcompress")) return strdup(bcompress_f);
-    if (!strcmp(nome, "bdecompress")) return strdup(bdecompress_f);
-    if (!strcmp(nome, "gcompress")) return strdup(gcompress_f);
-    if (!strcmp(nome, "gdecompress")) return strdup(gdecompress_f);
-    if (!strcmp(nome, "encrypt")) return strdup(encrypt_f);
-    if (!strcmp(nome, "decrypt")) return strdup(decrypt_f);
-    return NULL;
-}
 
+int executaProc(char *comando) {
+    char *found;
+    char *args = strdup(comando);
+    found = strsep(&args, " ");
+
+    char *input = strsep(&args, " "); //Guarda o nome e path do ficheiro de input.
+    char *output = strsep(&args, " "); //Guarda nome e path do ficheiro de output.
+    char *resto = strsep(&args, "\n"); //Guarda os filtros pedidos pelo utilizador.
+
+    char *argumentos;
+
+    char *tokens = strtok(resto, "\n");
+    do {
+        char *aux = strdup(tokens);
+        char *argumento = strsep(&aux, " ");
+        
+        if(strcmp(argumento,"bcompress") == 0) {
+            argumentos = ("bin/sdstore-transf/bcompress");
+        }
+        else if(strcmp(argumento,"nop") == 0) {
+            argumentos = ("bin/sdstore-transf/nop");
+        }
+        else {
+            argumentos = ("bin/sdstore-transf/bdecompress");
+        } 
+
+    } while((tokens = strtok(NULL,"\n")));
+
+    //printf("%s \n",argumentos);
+
+    pid_t pid;
+    pid = fork();
+
+    if(pid == 0) {
+        int input_f;
+        input_f = open(input, O_RDONLY);
+        if(input_f == -1) perror("Erro no open input");
+
+        dup2(input_f,0);
+        close(input_f);
+
+        int output_f;
+        output_f = open(output, O_CREAT | O_TRUNC | O_WRONLY);
+        if(output_f == -1) perror("Erro no open output");
+
+        dup2(output_f, 1);
+        close(output_f);
+
+        execvp(argumentos,&argumentos);
+
+        _exit(0);
+
+    }
+
+    return 0;
+}
 
 int main(int argc, char *argv[]) {
 
     if(argc < 3) perror("falta argumentos ");
 
     
-    int maxnop, maxbcompress, maxbdecompress, maxgcompress, maxgdecompress, maxencrypt, maxdencrypt = 0;
+    maxnop = maxbcompress = maxbdecompress = maxgcompress = maxgdecompress = maxencrypt = maxdecrypt = 0;
+    nop_cur = bcompress_cur = bdecompress_cur = gcompress_cur = gdecompress_cur = encrypt_cur = decrypt_cur = 0;
 
     char buffer[1024];
     int n;
@@ -129,43 +175,36 @@ int main(int argc, char *argv[]) {
             char *found = strsep(&aux, " "); // seleciona a string de aux até ao separador " "
 
             if(strcmp(found,"nop") == 0) {
-                nop_f = strdup(strsep(&aux, " "));
                 maxnop = atoi(strsep(&aux, "\n"));
             }
 
             else if(strcmp(found,"bcompress") == 0) {
-                bcompress_f = strdup(strsep(&aux, " "));
                 maxbcompress = atoi(strsep(&aux, "\n"));
             }        
 
             else if(strcmp(found,"bdecompress") == 0) {
-                //bdecompress_f = strdup(strsep(&aux, " "));
                 maxbdecompress = atoi(strsep(&aux, "\n"));
             }
             
             else if(strcmp(found,"gcompress") == 0) {
-                //gcompress_f = strdup(strsep(&aux, " "));
                 maxgcompress = atoi(strsep(&aux, "\n"));
             }  
 
             else if(strcmp(found,"gdecompress") == 0) {
-                //gcompress_f = strdup(strsep(&aux, " "));
                 maxgdecompress = atoi(strsep(&aux, "\n"));
             }        
 
             else if(strcmp(found,"encrypt") == 0) {
-                //encrypt_f = strdup(strsep(&aux, " "));
                 maxencrypt = atoi(strsep(&aux, "\n"));
             }
             
             else {
-                //decrypt_f = strdup(strsep(&aux, " "));
                 maxdecrypt = atoi(strsep(&aux, "\n"));
             } 
             free(aux);
         } while((token = strtok(NULL,"\n")));
     }
-    dir = strcat(strdup(argv[2]), "/");
+
     write(1, "Servidor iniciado com sucesso!\n", strlen("Servidor iniciado com sucesso!\n"));
 
     close(fd_conf);
@@ -216,19 +255,19 @@ int main(int argc, char *argv[]) {
             char mensagem[5000];
             char res[5000];
 
-            sprintf(mensagem, "Transf nop: 0/%d (Running/Max) \n",maxnop);
+            sprintf(mensagem, "Transf nop: %d/%d (Running/Max) \n",nop_cur,maxnop);
             strcat(res,mensagem);
-            sprintf(mensagem, "Transf bcompress: 0/%d (Running/Max) \n",maxbcompress);
+            sprintf(mensagem, "Transf bcompress: %d/%d (Running/Max) \n",bcompress_cur,maxbcompress);
             strcat(res,mensagem);
-            sprintf(mensagem, "Transf bdecompress: 0/%d (Running/Max) \n",maxbdecompress);
+            sprintf(mensagem, "Transf bdecompress: %d/%d (Running/Max) \n",bdecompress_cur,maxbdecompress);
             strcat(res,mensagem);
-            sprintf(mensagem, "Transf gcompress: 0/%d (Running/Max) \n",maxgcompress);
+            sprintf(mensagem, "Transf gcompress: %d/%d (Running/Max) \n",gcompress_cur,maxgcompress);
             strcat(res,mensagem);
-            sprintf(mensagem, "Transf gdecompress: 0/%d (Running/Max) \n",maxgdecompress);
+            sprintf(mensagem, "Transf gdecompress: %d/%d (Running/Max) \n",gdecompress_cur,maxgdecompress);
             strcat(res,mensagem);
-            sprintf(mensagem, "Transf encrypt: 0/%d (Running/Max) \n",maxencrypt);
+            sprintf(mensagem, "Transf encrypt: %d/%d (Running/Max) \n",encrypt_cur,maxencrypt);
             strcat(res,mensagem);
-            sprintf(mensagem, "Transf decrypt: 0/%d (Running/Max) \n",maxdencrypt);
+            sprintf(mensagem, "Transf decrypt: %d/%d (Running/Max) \n",decrypt_cur,maxdecrypt);
             strcat(res,mensagem);
             sprintf(mensagem, "pid: %d\n", getpid());
             strcat(res, mensagem);
@@ -239,29 +278,13 @@ int main(int argc, char *argv[]) {
         else if(leitura > 0 && (strncmp(comando,"proc-file",9) == 0)) {
             write(processing_fifo, "Pending...\n", strlen("Pending...\n"));
 
-            char *comand;  
-            comand = ("bin/sdstore-transf/bcompress");
+            //printf("%s \n",comando);
 
-            int input_f;
-            input_f = open("samples/teste.txt", O_RDONLY);
-            if(input_f == -1) perror("Erro no open 1");
-
-            dup2(input_f,0);
-            close(input_f);
-
-            int output_f;
-            output_f = open("output/output.txt", O_CREAT | O_TRUNC | O_WRONLY);
-            if(output_f == -1) perror("Erro no open 2");
-
-            dup2(output_f, 1);
-            close(output_f);
-
-            write(processing_fifo, "Processing...\n", strlen("Processing...\n"));
-
-            execvp(comand,&comand);
-            //execlp("ls","ls","-l",NULL);
-
-
+            if(check_disponibilidade(strdup(comando)) == 1) { //Verifica se temos filtros suficientes para executar o comando
+                write(processing_fifo, "Processing...\n", strlen("Processing...\n")); //informa o cliente que o pedido começou a ser processado.
+                executaProc(comando);
+            }
+            
         }
 
         unlink("/tmp/server_client_fifo");

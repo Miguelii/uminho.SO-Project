@@ -14,6 +14,9 @@
 
 //Contem nome dos executaveis de cada proc-file
 char *nop_f, *bcompress_f, *bdecompress_f, *gcompress_f, *gdecompress_f, *encrypt_f, *decrypt_f;
+
+int maxnop, maxbcompress, maxbdecompress, maxgcompress, maxgdecompress, maxencrypt, maxdecrypt;
+int nop_cur, bcompress_cur, bdecompress_cur, gcompress_cur, gdecompress_cur, encrypt_cur, decrypt_cur;
 char *dir; //Diretoria dos executáveis dos filtros.
 
 void sigint_handler (int signum) {
@@ -38,6 +41,62 @@ void sigint_handler (int signum) {
     _exit(0);
 }
 
+//Atualiza informação sobre filtros em uso.
+ void updateSlots(char *arg) {
+    char *dup = strdup(arg);
+    char *tok;
+    //Dependendo do comando inserido, atualiza as variáveis correspondentes aos filtros em uso.
+    while((tok = strsep(&dup, " "))) {
+        if (!strcmp(tok, "nop")) nop_cur++;
+        if (!strcmp(tok, "bcompress")) bcompress_cur++;
+        if (!strcmp(tok, "bdecompress")) bdecompress_cur++;
+        if (!strcmp(tok, "gcompress")) gcompress_cur++;
+        if (!strcmp(tok, "gdecompress")) gdecompress_cur++;
+        if (!strcmp(tok, "encrypt")) encrypt_cur++;
+        if (!strcmp(tok, "decrypt")) decrypt_cur++;
+    }
+    free(dup);
+}
+
+//Atualiza informação sobre os filtros em uso
+void freeSlots(char *arg) {
+    char *dup = strdup(arg);
+    char *tok;
+    //Funcionamento igual ao updateSlots() mas decrementa em vez de incrementar.
+    while((tok = strsep(&dup, " "))) {
+        if (!strcmp(tok, "nop")) nop_cur--;
+        if (!strcmp(tok, "bcompress")) bcompress_cur--;
+        if (!strcmp(tok, "bdecompress")) bdecompress_cur--;
+        if (!strcmp(tok, "gcompress")) gcompress_cur--;
+        if (!strcmp(tok, "gdecompress")) gdecompress_cur--;
+        if (!strcmp(tok, "encrypt")) encrypt_cur--;
+        if (!strcmp(tok, "decrypt")) decrypt_cur--;
+    }
+    free(dup);
+}
+
+//Retorna 1 se tivermos filtros disponiveis para executar a transformação.
+int check_disponibilidade (char *command) {
+    char *comando = strdup(command);
+    char *found;
+    for (int i = 0; i < 3; i++) {
+        found = strsep(&comando, " ");
+    }
+    found = strsep(&comando, " ");
+    //Basta um filtro não estar disponível e a função retorna 0 (0 -> não há disponibilidade para execução do comando).
+    do {
+        if (!strcmp(found, "nop")) if (nop_cur >= maxnop) return 0;
+        if (!strcmp(found, "bcompress")) if (bcompress_cur >= maxbcompress) return 0;
+        if (!strcmp(found, "bdecompress")) if (bdecompress_cur >= maxbdecompress) return 0;
+        if (!strcmp(found, "gcompress")) if (gcompress_cur >= maxgcompress) return 0;
+        if (!strcmp(found, "gdecompress")) if (gdecompress_cur >= maxgdecompress) return 0;
+        if (!strcmp(found, "encrypt")) if (encrypt_cur >= maxencrypt) return 0;
+        if (!strcmp(found, "decrypt")) if (decrypt_cur >= maxdecrypt) return 0;
+    } while ((found = strsep(&comando, " ")) != NULL);
+    free(comando);
+    return 1;
+}
+
 //Dependendo do filtro pedido no comando, retorna uma string com a diretoria e nome do executável com o correspondente filtro.
 char *assignExec(char *nome) {
     if (!strcmp(nome, "nop")) return strdup(nop_f);
@@ -49,103 +108,6 @@ char *assignExec(char *nome) {
     if (!strcmp(nome, "decrypt")) return strdup(decrypt_f);
     return NULL;
 }
-
-
-//Set dos argumentos a serem inseridos na função execvp();
-char **setArgs(char *input, char *output, char *remaining) {
-    char **ret = (char **) calloc(100, sizeof(char *));
-    int current = 0;
-    char *aux = assignExec(strsep(&remaining, " "));
-    char res[50];
-    res[0] = 0;
-    strcat(res, dir);
-    strcat(res, aux);
-    ret[current++] = strdup(res);
-    ret[current] = NULL;
-    return ret;
-}
-
-int executaProc(char *comando) {
-    char *found;
-    char *args = strdup(comando);
-
-    found = strsep(&args, " ");
-
-    char *input = strsep(&args, " "); //Guarda o nome e path do ficheiro de input.
-    char *output = strsep(&args, " "); //Guarda nome e path do ficheiro de output.
-    char *resto = strsep(&args, "\n"); //Guarda os filtros pedidos pelo utilizador.
-
-    //inProcess[nProcesses++] = strdup(comando);
-    //updateSlots(resto);
-
-    char **argumentos = setArgs(input, output, resto); //Guarda os argumentos a serem fornecidos à função execvp().
-    if (!fork()) {
-        int exInput;
-        if ((exInput = open(input, O_RDONLY)) < 0) { //Abre ficheiro de input.
-            perror("[transform] Erro ao abrir ficheiro input");
-            return -1;
-        }
-        dup2(exInput, 0); //Coloca o stdin no ficheiro de input.
-        close(exInput);
-        int outp;
-        if ((outp = open(output, O_CREAT | O_TRUNC | O_WRONLY)) < 0) { //Cria ficheiro de output.
-            perror("[transform] Erro ao criar ficheiro de output");
-            return -1;
-        }
-        dup2(outp, 1); //Coloca o stdout no ficheiro de output.
-        close(outp);
-        if (execvp(*argumentos, argumentos) == -1) {
-            perror("[transform] Erro em execvp");
-            return -1;
-        }
-        _exit(0);
-    }
-    free(args);
-    return 0;
-}
-
-int executaProc2(char *comando) {
-    char *found;
-    char *argumentos;
-    char *args = strdup(comando);
-
-    found = strsep(&args, " ");
-
-    char *input = strsep(&args, " "); //Guarda o nome e path do ficheiro de input.
-    char *output = strsep(&args, " "); //Guarda nome e path do ficheiro de output.
-    char *resto = strsep(&args, "\n"); //Guarda os filtros pedidos pelo utilizador.
-
-
-    pid_t pid;
-    pid = fork();
-    if(pid == 0){
-        int exInput;
-        if ((exInput = open(input, O_RDONLY)) < 0) { //Abre ficheiro de input.
-            perror("[transform] Erro ao abrir ficheiro input");
-            return -1;
-        }
-        dup2(exInput, 0); //Coloca o stdin no ficheiro de input.
-        close(exInput);
-
-        int outp;
-        if ((outp = open(output, O_CREAT | O_TRUNC | O_WRONLY)) < 0) { //Cria ficheiro de output.
-            perror("[transform] Erro ao criar ficheiro de output");
-            return -1;
-        }
-        dup2(outp, 1); //Coloca o stdout no ficheiro de output.
-        close(outp);
-
-
-        argumentos = ("bin/SDStore-transf/bcompress");
-
-        execvp(*argumentos,argumentos);
-
-        _exit(0);
-    } 
-
-    return 0;
-}
-
 
 
 int main(int argc, char *argv[]) {
@@ -167,12 +129,12 @@ int main(int argc, char *argv[]) {
             char *found = strsep(&aux, " "); // seleciona a string de aux até ao separador " "
 
             if(strcmp(found,"nop") == 0) {
-                //nop_f = strdup(strsep(&aux, " "));
+                nop_f = strdup(strsep(&aux, " "));
                 maxnop = atoi(strsep(&aux, "\n"));
             }
 
             else if(strcmp(found,"bcompress") == 0) {
-                //bcompress_f = strdup(strsep(&aux, " "));
+                bcompress_f = strdup(strsep(&aux, " "));
                 maxbcompress = atoi(strsep(&aux, "\n"));
             }        
 
@@ -198,7 +160,7 @@ int main(int argc, char *argv[]) {
             
             else {
                 //decrypt_f = strdup(strsep(&aux, " "));
-                maxdencrypt = atoi(strsep(&aux, "\n"));
+                maxdecrypt = atoi(strsep(&aux, "\n"));
             } 
             free(aux);
         } while((token = strtok(NULL,"\n")));
@@ -268,14 +230,38 @@ int main(int argc, char *argv[]) {
             strcat(res,mensagem);
             sprintf(mensagem, "Transf decrypt: 0/%d (Running/Max) \n",maxdencrypt);
             strcat(res,mensagem);
+            sprintf(mensagem, "pid: %d\n", getpid());
+            strcat(res, mensagem);
             strcat(res,"\0");
             write(server_client_fifo,res,strlen(res));
         }
 
         else if(leitura > 0 && (strncmp(comando,"proc-file",9) == 0)) {
             write(processing_fifo, "Pending...\n", strlen("Pending...\n"));
-            executaProc2(comando);
+
+            char *comand;  
+            comand = ("bin/sdstore-transf/bcompress");
+
+            int input_f;
+            input_f = open("samples/teste.txt", O_RDONLY);
+            if(input_f == -1) perror("Erro no open 1");
+
+            dup2(input_f,0);
+            close(input_f);
+
+            int output_f;
+            output_f = open("output/output.txt", O_CREAT | O_TRUNC | O_WRONLY);
+            if(output_f == -1) perror("Erro no open 2");
+
+            dup2(output_f, 1);
+            close(output_f);
+
             write(processing_fifo, "Processing...\n", strlen("Processing...\n"));
+
+            execvp(comand,&comand);
+            //execlp("ls","ls","-l",NULL);
+
+
         }
 
         unlink("/tmp/server_client_fifo");

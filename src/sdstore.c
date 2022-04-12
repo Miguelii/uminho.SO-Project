@@ -49,10 +49,17 @@ int main(int argc, char *argv[]) {
         // ./sdstore proc-file priority input-filename output-filename transformation-id-1 transformation-id-2
         // ./sdstore proc-file <priority> samples/file-a outputs/file-a-output bcompress nop gcompress encrypt nop
         
-        char aux[1024];
-        //parseArgs(argc, argv, aux);
-        strcpy(aux,argv[1]);
-        write(client_server_fifo,aux,strlen(aux));
+        char mensagem[1024];
+        char res[1024];
+        res[0] = 0; 
+
+        for(int cont = 1; cont<argc;cont++){
+            sprintf(mensagem,argv[cont]);
+            strcat(res,mensagem);
+            strcat(res," ");
+        }
+
+        write(client_server_fifo,res,strlen(res));
         close(client_server_fifo);
 
         int leitura = 0;

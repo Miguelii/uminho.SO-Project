@@ -45,7 +45,6 @@ int main(int argc, char *argv[]) {
         char res[5000];
         res[0] = 0; 
 
-        
         for(int cont = 1; cont<argc;cont++){
             sprintf(mensagem,argv[cont]);
             strcat(res,mensagem);

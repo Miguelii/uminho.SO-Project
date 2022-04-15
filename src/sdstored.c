@@ -1,27 +1,50 @@
 #include <unistd.h>
-#include <stdlib.h>
 #include <fcntl.h>
-#include <stdio.h>
-#include <string.h>
-#include <sys/stat.h>
-#include <unistd.h> 
 #include <sys/wait.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
 #include <signal.h>
+#include <poll.h>
 
 // SERVER
 
 // $ ./bin/sdstored etc/sdstored.conf bin/sdstore-transformations
+void freeSlots(char *arg);
+int check_disponibilidade (char *command);
 
+typedef struct queue {
+    char **line; //Comando em espera.
+    int filled; //Inidice da cauda.
+    int pos; //Proximo processo em execução.
+} Queue;
+
+Queue *initQueue () {
+    Queue *fila = calloc(1, sizeof(struct queue));
+    fila->line = (char **) calloc(100, sizeof(char *));
+    fila->pos = 0;
+    fila->filled = -1;
+    return fila;
+}
+
+int canQ (Queue *q) {
+    if (q->filled >= 0 && q->pos <= q->filled) {
+        if (check_disponibilidade(q->line[q->pos])) return 1;
+    }
+    return 0;
+}
 //Contem nome dos executaveis de cada proc-file
-char *nop_f, *bcompress_f, *bdecompress_f, *gcompress_f, *gdecompress_f, *encrypt_f, *decrypt_f;
-
 int maxnop, maxbcompress, maxbdecompress, maxgcompress, maxgdecompress, maxencrypt, maxdecrypt;
 int nop_cur, bcompress_cur, bdecompress_cur, gcompress_cur, gdecompress_cur, encrypt_cur, decrypt_cur;
 
+int nProcesses = 0; //N de processos ativos
+char *inProcess[1024]; //Processos em execução
 
 void sigint_handler (int signum) {
     int status;
-    pid_t pid;
+    pid_t pid;  
     while((pid = waitpid(-1, &status, WNOHANG)) > 0) wait(NULL); //Termina todos os filhos.
 
     //Remove os ficheiros temporários criados pelos named pipes
@@ -39,6 +62,38 @@ void sigint_handler (int signum) {
         _exit(-1);
     }
     _exit(0);
+}
+
+void sigterm_handler (int signum) {
+    int status;
+    pid_t pid;
+    while((pid = waitpid(-1, &status, WNOHANG)) > 0) wait(NULL); //Termina todos os filhos.
+
+    //Remove os ficheiros temporários criados durante a execução.
+    write(1, "\nA terminar servidor.\n", strlen("\nA terminar servidor.\n"));
+    if (unlink("/tmp/server_client_fifo") == -1) {
+        perror("[server_client_fifo] Erro ao eliminar ficheiro temporário");
+        _exit(-1);
+    }
+    if (unlink("/tmp/client_server_fifo") == -1) {
+        perror("[client-server-fifo] Erro ao eliminar ficheiro temporário");
+        _exit(-1);
+    }
+    if (unlink("/tmp/processing_fifo") == -1) {
+        perror("[processing_fifo] Erro ao eliminar ficheiro temporário");
+        _exit(-1);
+    }
+    _exit(0);
+}
+//Handler do sinal SIGCHLD
+void sigchld_handler(int signum) {
+    char *tok = strdup(inProcess[--nProcesses]); //Guarda o comando (Alterações necessárias aqui)
+    strsep(&tok, " ");
+    strsep(&tok, " ");
+    strsep(&tok, " ");
+    char *resto = strsep(&tok, "\n");
+    freeSlots(resto); //Coloca os filtros como novamente disponíveis.
+    free(tok);
 }
 
 //Atualiza informação sobre filtros em uso.
@@ -102,13 +157,16 @@ int executaProc(char *comando) {
     char *found;
     char *args = strdup(comando);
     found = strsep(&args, " ");
+    int status;
 
     char *input = strsep(&args, " "); //Guarda o nome e path do ficheiro de input.
     char *output = strsep(&args, " "); //Guarda nome e path do ficheiro de output.
     char *resto = strsep(&args, "\n"); //Guarda os filtros pedidos pelo utilizador.
 
+    inProcess[nProcesses++] = strdup(comando);
     char *argumentos;
-
+    updateSlots(resto);
+    
     char *tokens = strtok(resto, "\n");
     do {
         char *aux = strdup(tokens);
@@ -152,12 +210,15 @@ int executaProc(char *comando) {
 
     }
 
+    free(args);
+
     return 0;
 }
 
 int main(int argc, char *argv[]) {
 
-    if(argc < 3) perror("falta argumentos ");
+    if(argc < 3) perror("Falta argumentos ");
+    if(argc > 3) perror("Muitos argumentos ");
 
     
     maxnop = maxbcompress = maxbdecompress = maxgcompress = maxgdecompress = maxencrypt = maxdecrypt = 0;
@@ -214,6 +275,7 @@ int main(int argc, char *argv[]) {
     int client_server_fifo;
     int server_client_fifo;
     int processing_fifo;
+    Queue *q = initQueue();
 
     if(mkfifo("/tmp/client_server_fifo",0600) == -1) {
         perror("Named pipe 1 error");
@@ -232,6 +294,14 @@ int main(int argc, char *argv[]) {
         perror("[signal] erro da associação do signint_handler.");
         exit(-1);
     }
+    if (signal(SIGCHLD, sigchld_handler) == SIG_ERR) {
+        perror("[signal] erro da associação do sigchld_handler.");
+        exit(-1);
+    }
+    if (signal(SIGTERM, sigterm_handler) == SIG_ERR) {
+        perror("[signal] erro da associação do sigterm_handler.");
+        exit(-1);
+    }
 
     //Abrir pipe
     char comando[1024];
@@ -245,15 +315,45 @@ int main(int argc, char *argv[]) {
     processing_fifo = open("/tmp/processing_fifo",O_WRONLY);
     if(processing_fifo == -1) perror("Erro fifo processing_fifo");
 
-    //ler o pipe que vem do cliente
-    int leitura = read(client_server_fifo,comando,sizeof(comando));
-    if(leitura == -1) perror("Erro no read");
+
+    //Setup da função poll()
+    struct pollfd *pfd = calloc(1, sizeof(struct pollfd));
+    pfd->fd = client_server_fifo;
+    pfd->events = POLLIN;
+    pfd->revents = POLLOUT;
+
+    int leitura = 0;
 
     while(1) {
+
+        if (canQ(q) == 1) { //Verifica sempre se pode executar o que esta na fila.
+            //Caso de poder executar a fila, usa mesmo código do transform que esta mais em baixo.
+            char *comandoQ = strdup(q->line[q->pos]);
+            q->pos++;
+            write(processing_fifo, "Processing...\n", strlen("Processing...\n")); //informa o cliente que o pedido começou a ser processado.
+            executaProc(comandoQ);
+        }
+        //Execução bloqueada até ser lida alguma coisa no pipe. Diminui utilização de CPU. 
+        else {
+            poll(pfd, 1, -1); //Verifica se o pipe está disponivel para leitura
+        }
+
+        leitura = read(client_server_fifo,comando,sizeof(comando));
+        //Handling de erro no caso de ocorrer algum problema na leitura.
+        if(leitura == -1) perror("Erro no read");        
+        
+        comando[leitura] = 0;
+
         if(leitura > 0 && (strncmp(comando,"status",leitura) == 0)) {
             //printf("Pipe lido! \n");
             char mensagem[5000];
             char res[5000];
+            res[0] = 0;
+
+            for (int i = 0; i < nProcesses; i++) {
+                sprintf(mensagem, "Task #%d: %s\n", i+1, inProcess[i]);
+                strcat(res, mensagem);
+            }
 
             sprintf(mensagem, "Transf nop: %d/%d (Running/Max) \n",nop_cur,maxnop);
             strcat(res,mensagem);
@@ -278,18 +378,16 @@ int main(int argc, char *argv[]) {
         else if(leitura > 0 && (strncmp(comando,"proc-file",9) == 0)) {
             write(processing_fifo, "Pending...\n", strlen("Pending...\n"));
 
-            //printf("%s \n",comando);
+            printf("%s \n",comando);
 
             if(check_disponibilidade(strdup(comando)) == 1) { //Verifica se temos filtros suficientes para executar o comando
                 write(processing_fifo, "Processing...\n", strlen("Processing...\n")); //informa o cliente que o pedido começou a ser processado.
                 executaProc(comando);
             }
+            else {
+                q->line[++q->filled] = strdup(comando);
+            }
             
         }
-
-        unlink("/tmp/server_client_fifo");
-        unlink("/tmp/client_server_fifo");
-        unlink("/tmp/processing_fifo");
-        printf("Server close\n");
     }
 }

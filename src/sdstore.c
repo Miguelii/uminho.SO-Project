@@ -9,13 +9,6 @@
 
 // CLIENT
 
-void parseArgs (int argc, char *argv[], char *res) {
-    for (int i = 1; i < argc; i++) {
-        strcat(res, argv[i]);
-        strcat(res, " ");
-    }
-}
-
 // ./bin/sdstore status
 
 int main(int argc, char *argv[]) {
@@ -48,10 +41,11 @@ int main(int argc, char *argv[]) {
     if(strcmp(argv[1],"proc-file") == 0) {
         // ./sdstore proc-file priority input-filename output-filename transformation-id-1 transformation-id-2
         
-        char mensagem[1024];
-        char res[1024];
+        char mensagem[5000];
+        char res[5000];
         res[0] = 0; 
 
+        
         for(int cont = 1; cont<argc;cont++){
             sprintf(mensagem,argv[cont]);
             strcat(res,mensagem);

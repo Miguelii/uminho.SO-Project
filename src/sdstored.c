@@ -42,6 +42,8 @@ int nop_cur, bcompress_cur, bdecompress_cur, gcompress_cur, gdecompress_cur, enc
 int nProcesses = 0; //N de processos ativos
 char *inProcess[1024]; //Processos em execução
 
+char *dir; //Diretoria dos executáveis dos filtros.
+
 void sigint_handler (int signum) {
     int status;
     pid_t pid;  
@@ -152,6 +154,108 @@ int check_disponibilidade (char *command) {
     return 1;
 }
 
+// Pega no array resto e substitui as transformaçoes para as respetivas diretorias
+char **setArgs(char *resto) {
+    int current = 0;
+    char res[50];
+    res[0] = 0;
+    
+    char **argumentos = (char **) calloc(100, sizeof(char *));
+    
+    char *dup = strdup(resto);
+    char *tok;
+
+    while((tok = strsep(&dup, " "))) {
+        if (!strcmp(tok, "bcompress")) {
+        strcat(res, dir);
+        strcat(res, "bcompress");
+        argumentos[current++] = strdup(res);
+        }
+        if (!strcmp(tok, "encrypt")) {
+        strcat(res, dir);
+        strcat(res, "encrypt");
+        argumentos[current++] = strdup(res);
+        }
+        if (!strcmp(tok, "nop")) {
+        strcat(res, dir);
+        strcat(res, "nop");
+        argumentos[current++] = strdup(res);
+        }
+        if (!strcmp(tok, "decrypt")) {
+        strcat(res, dir);
+        strcat(res, "decrypt");
+        argumentos[current++] = strdup(res);
+        }
+        if (!strcmp(tok, "bdecompress")) {
+        strcat(res, dir);
+        strcat(res, "bdecompress");
+        argumentos[current++] = strdup(res);
+        }
+        if (!strcmp(tok, "gcompress")) {
+        strcat(res, dir);
+        strcat(res, "gcompress");
+        argumentos[current++] = strdup(res);
+        }
+        if (!strcmp(tok, "gdecompress")) {
+        strcat(res, dir);
+        strcat(res, "gdecompress");
+        argumentos[current++] = strdup(res);
+        }
+        memset(res, 0, sizeof res);
+    }
+    free(dup);
+    
+    argumentos[current] = NULL;
+
+    return argumentos;
+}
+
+void execs(int input, int output, char ** argumentos) {
+    int i = 0;
+    int pip[2];
+
+    while(argumentos[i]!=NULL) {
+        if (i != 0) {
+            dup2(pip[0],0);
+            close(pip[0]);
+        } else {
+            dup2(input,0);
+            close(input);
+        }
+
+        if (argumentos[i+1] == NULL) {
+            dup2(output,1);
+            close(output);
+        }
+        else {
+            if (pipe(pip) == 0) {
+                dup2(pip[1],1);
+                close(pip[1]);
+            } else {
+                perror("Pipe");
+                _exit(-1);
+            }
+        }
+
+        pid_t f;
+        f = fork();
+        if(f == -1) {
+            perror("Erro fork execs");
+            _exit(-1);
+        } else if (f == 0) {
+            char *executavel = malloc(sizeof(char) * 1024);
+            strcpy(executavel, argumentos[i]);
+            execlp(executavel, executavel, NULL);
+            perror("Exec");
+            _exit(-1);
+
+            //execvp(argumentos[i], &argumentos[i]
+        }
+
+        i++;
+    }
+}
+
 
 int executaProc(char *comando) {
     char *found;
@@ -164,27 +268,13 @@ int executaProc(char *comando) {
     char *resto = strsep(&args, "\n"); //Guarda os filtros pedidos pelo utilizador.
 
     inProcess[nProcesses++] = strdup(comando);
-    char *argumentos;
     updateSlots(resto);
     
-    char *tokens = strtok(resto, "\n");
-    do {
-        char *aux = strdup(tokens);
-        char *argumento = strsep(&aux, " ");
-        
-        if(strcmp(argumento,"bcompress") == 0) {
-            argumentos = ("bin/sdstore-transf/bcompress");
-        }
-        else if(strcmp(argumento,"nop") == 0) {
-            argumentos = ("bin/sdstore-transf/nop");
-        }
-        else {
-            argumentos = ("bin/sdstore-transf/bdecompress");
-        } 
+    char **argumentos = setArgs(resto);
 
-    } while((tokens = strtok(NULL,"\n")));
-
-    //printf("%s \n",argumentos);
+    //debug
+    for(int index = 0; argumentos[index]!=NULL; index++) printf("[DEBUG] %s \n",argumentos[index]);
+    printf("------ FIM ARGS ------\n");
 
     pid_t pid;
     pid = fork();
@@ -194,22 +284,16 @@ int executaProc(char *comando) {
         input_f = open(input, O_RDONLY);
         if(input_f == -1) perror("Erro no open input");
 
-        dup2(input_f,0);
-        close(input_f);
-
         int output_f;
         output_f = open(output, O_CREAT | O_TRUNC | O_WRONLY);
         if(output_f == -1) perror("Erro no open output");
-
-        dup2(output_f, 1);
-        close(output_f);
-
-        execvp(argumentos,&argumentos);
-
+        
+        execs(input_f,output_f,argumentos);
         _exit(0);
-
     }
-
+    else {
+        wait(&status);
+    }
     free(args);
 
     return 0;
@@ -217,10 +301,15 @@ int executaProc(char *comando) {
 
 int main(int argc, char *argv[]) {
 
-    if(argc < 3) perror("Falta argumentos ");
-    if(argc > 3) perror("Muitos argumentos ");
+    if(argc < 3) {
+        perror("Falta argumentos ");
+        return 0;
+    }
+    if(argc > 3) {
+        perror("Muitos argumentos ");
+        return 0;
+    }
 
-    
     maxnop = maxbcompress = maxbdecompress = maxgcompress = maxgdecompress = maxencrypt = maxdecrypt = 0;
     nop_cur = bcompress_cur = bdecompress_cur = gcompress_cur = gdecompress_cur = encrypt_cur = decrypt_cur = 0;
 
@@ -265,6 +354,8 @@ int main(int argc, char *argv[]) {
             free(aux);
         } while((token = strtok(NULL,"\n")));
     }
+
+    dir = strcat(strdup(argv[2]), "/");
 
     write(1, "Servidor iniciado com sucesso!\n", strlen("Servidor iniciado com sucesso!\n"));
 
@@ -378,7 +469,7 @@ int main(int argc, char *argv[]) {
         else if(leitura > 0 && (strncmp(comando,"proc-file",9) == 0)) {
             write(processing_fifo, "Pending...\n", strlen("Pending...\n"));
 
-            printf("%s \n",comando);
+            printf("[DEBUG] %s \n",comando);
 
             if(check_disponibilidade(strdup(comando)) == 1) { //Verifica se temos filtros suficientes para executar o comando
                 write(processing_fifo, "Processing...\n", strlen("Processing...\n")); //informa o cliente que o pedido começou a ser processado.

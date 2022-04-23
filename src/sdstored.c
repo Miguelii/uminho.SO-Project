@@ -11,7 +11,7 @@
 
 // SERVER
 
-// $ ./bin/sdstored etc/sdstored.conf bin/sdstore-transformations
+// $ ./bin/sdstored etc/sdstored.conf bin/sdstore-transf
 void freeSlots(char *arg);
 int check_disponibilidade (char *command);
 
@@ -285,7 +285,7 @@ int executaProc(char *comando) {
         if(input_f == -1) perror("Erro no open input");
 
         int output_f;
-        output_f = open(output, O_CREAT | O_TRUNC | O_WRONLY);
+        output_f = open(output, O_CREAT | O_TRUNC | O_WRONLY, 0666);
         if(output_f == -1) perror("Erro no open output");
         
         execs(input_f,output_f,argumentos);

@@ -13,10 +13,6 @@
 
 // $ ./bin/sdstored etc/sdstored.conf bin/sdstore-transf
 
-void freeSlots(char *arg);
-int check_disponibilidade (char *command);
-
-
 typedef struct queue {
     char **line; //Comando em espera.
     int filled; //Inidice da cauda.
@@ -25,6 +21,9 @@ typedef struct queue {
 } Queue;
 
 void push(Queue *q, int length);
+void shiftQueue(Queue *q,int n);
+void freeSlots(char *arg);
+int check_disponibilidade (char *command);
 
 Queue *initQueue () {
     Queue *fila = calloc(1, sizeof(struct queue));
@@ -63,6 +62,20 @@ void push(Queue *q, int length) {
        }     
     }     
   } 
+}
+
+void shiftQueue(Queue *q,int n) {
+    //Shift para esq no array das prioridades
+    for(int i=0;i<n-1;i++){
+        q->pri[i]=q->pri[i+1];
+    }
+    q->pri[n-1]=0;
+    
+    //Shift para esq no array dos comandos
+    for(int i=0;i<n-1;i++){
+        q->line[i]=q->line[i+1];
+    }
+    q->line[n-1]=NULL;
 }
 
 //Contem nome dos executaveis de cada proc-file
@@ -450,7 +463,11 @@ int main(int argc, char *argv[]) {
         if (canQ(q) == 1) { //Verifica sempre se pode executar o que esta na fila.
             //Caso de poder executar a fila, usa mesmo código do transform que esta mais em baixo.
             char *comandoQ = strdup(q->line[q->pos]);
-            q->pos++;
+
+            //Shift da queue
+            shiftQueue(q,q->filled+1);
+            q->filled--;
+            
             write(processing_fifo, "Processing...\n", strlen("Processing...\n")); //informa o cliente que o pedido começou a ser processado.
             executaProc(comandoQ);
         }

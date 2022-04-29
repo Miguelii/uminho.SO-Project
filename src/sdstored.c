@@ -12,18 +12,24 @@
 // SERVER
 
 // $ ./bin/sdstored etc/sdstored.conf bin/sdstore-transf
+
 void freeSlots(char *arg);
 int check_disponibilidade (char *command);
+
 
 typedef struct queue {
     char **line; //Comando em espera.
     int filled; //Inidice da cauda.
     int pos; //Proximo processo em execução.
+    int *pri; //prioridade
 } Queue;
+
+void push(Queue *q, int length);
 
 Queue *initQueue () {
     Queue *fila = calloc(1, sizeof(struct queue));
     fila->line = (char **) calloc(100, sizeof(char *));
+    fila->pri = (int *) calloc(20, sizeof(int));
     fila->pos = 0;
     fila->filled = -1;
     return fila;
@@ -35,6 +41,30 @@ int canQ (Queue *q) {
     }
     return 0;
 }
+
+void push(Queue *q, int length) {
+
+  int temp = 0;
+  
+  for (int i = 0; i < length; i++) {     
+    for (int j = i+1; j < length; j++) {     
+       if(q->pri[i] < q->pri[j]) { 
+         
+          //Swap no array dos comandos
+          Queue *temp = q;
+          temp = q->line[i];
+          q->line[i] = q->line[j];
+          q->line[j] = temp;
+          
+          //Swap no array das prioridades
+          temp = q->pri[i];    
+          q->pri[i] = q->pri[j];    
+          q->pri[j] = temp;    
+       }     
+    }     
+  } 
+}
+
 //Contem nome dos executaveis de cada proc-file
 int maxnop, maxbcompress, maxbdecompress, maxgcompress, maxgdecompress, maxencrypt, maxdecrypt;
 int nop_cur, bcompress_cur, bdecompress_cur, gcompress_cur, gdecompress_cur, encrypt_cur, decrypt_cur;
@@ -136,7 +166,7 @@ void freeSlots(char *arg) {
 int check_disponibilidade (char *command) {
     char *comando = strdup(command);
     char *found;
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < 2; i++) {
         found = strsep(&comando, " ");
     }
     found = strsep(&comando, " ");
@@ -260,7 +290,7 @@ void execs(int input, int output, char ** argumentos) {
 int executaProc(char *comando) {
     char *found;
     char *args = strdup(comando);
-    found = strsep(&args, " ");
+    //found = strsep(&args, " ");
     int status;
 
     char *input = strsep(&args, " "); //Guarda o nome e path do ficheiro de input.
@@ -273,7 +303,7 @@ int executaProc(char *comando) {
     char **argumentos = setArgs(resto);
 
     //debug
-    for(int index = 0; argumentos[index]!=NULL; index++) printf("[DEBUG] %s \n",argumentos[index]);
+    for(int index = 0; argumentos[index]!=NULL; index++) printf("[DEBUG - Args] %s \n",argumentos[index]);
     printf("------ FIM ARGS ------\n");
 
     pid_t pid;
@@ -414,7 +444,7 @@ int main(int argc, char *argv[]) {
     pfd->revents = POLLOUT;
 
     int leitura = 0;
-
+    int hasPriority = -1;
     while(1) {
 
         if (canQ(q) == 1) { //Verifica sempre se pode executar o que esta na fila.
@@ -469,14 +499,46 @@ int main(int argc, char *argv[]) {
         else if(leitura > 0 && (strncmp(comando,"proc-file",9) == 0)) {
             write(processing_fifo, "Pending...\n", strlen("Pending...\n"));
 
-            printf("[DEBUG] %s \n",comando);
+            printf("[DEBUG Comando Inicial] %s \n",comando);
 
-            if(check_disponibilidade(strdup(comando)) == 1) { //Verifica se temos filtros suficientes para executar o comando
-                write(processing_fifo, "Processing...\n", strlen("Processing...\n")); //informa o cliente que o pedido começou a ser processado.
-                executaProc(comando);
+            char *auxComando;
+
+            //Verificar se o comando tem prioridade
+            if(comando[10] == '-' && comando[11] == 'p') {
+                hasPriority = 0;
+                char *args = strdup(comando);
+                strsep(&args, " ");
+                strsep(&args, " ");
+                strsep(&args, " ");
+                auxComando = strsep(&args, "\n");
+            } else {
+                hasPriority = -1;
+                char *args = strdup(comando);
+                strsep(&args, " ");
+                auxComando = strsep(&args, "\n");
             }
-            else {
-                q->line[++q->filled] = strdup(comando);
+
+            printf("[DEBUG Comando Final] %s \n",auxComando);
+            printf("[DEBUG Tem prioridade?] %d \n",hasPriority);
+
+            if(check_disponibilidade(strdup(auxComando)) == 1) { //Verifica se temos filtros suficientes para executar o comando
+                write(processing_fifo, "Processing...\n", strlen("Processing...\n")); //informa o cliente que o pedido começou a ser processado.
+                executaProc(auxComando);
+            } else {
+
+                //Adicionar pedido à queue
+                q->line[++q->filled] = strdup(auxComando);
+                
+                //Atribuir a prioridade
+                char *aux = strdup(comando);
+                if(hasPriority == 0) {
+                    q->pri[q->filled] = atoi(&aux[27]);
+                } else {
+                    q->pri[q->filled] = 0;
+                }
+
+                //Dar sort à Queue
+                push(q,q->filled+1);
             }
             
         }

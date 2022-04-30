@@ -20,6 +20,7 @@ typedef struct queue {
     int *pri; //prioridade
 } Queue;
 
+void term_handler(int signum);
 void push(Queue *q, int length);
 void shiftQueue(Queue *q,int n);
 void freeSlots(char *arg);
@@ -94,51 +95,37 @@ void sigint_handler (int signum) {
 
     //Remove os ficheiros temporários criados pelos named pipes
     write(1, "\nA terminar servidor.\n", strlen("\nA terminar servidor.\n"));
-    if (unlink("/tmp/server_client_fifo") == -1) {
-        perror("[server_client_fifo] Erro ao eliminar ficheiro temporário");
+    if (unlink("/tmp/main") == -1) {
+        perror("[tmp/main] Erro ao eliminar ficheiro temporário");
         _exit(-1);
     }
-    if (unlink("/tmp/client_server_fifo") == -1) {
-        perror("[client-server-fifo] Erro ao eliminar ficheiro temporário");
-        _exit(-1);
-    }
-    if (unlink("/tmp/processing_fifo") == -1) {
-        perror("[processing_fifo] Erro ao eliminar ficheiro temporário");
-        _exit(-1);
-    }
+
     _exit(0);
 }
 
-void sigterm_handler (int signum) {
-    int status;
-    pid_t pid;
-    while((pid = waitpid(-1, &status, WNOHANG)) > 0) wait(NULL); //Termina todos os filhos.
-
-    //Remove os ficheiros temporários criados durante a execução.
-    write(1, "\nA terminar servidor.\n", strlen("\nA terminar servidor.\n"));
-    if (unlink("/tmp/server_client_fifo") == -1) {
-        perror("[server_client_fifo] Erro ao eliminar ficheiro temporário");
-        _exit(-1);
-    }
-    if (unlink("/tmp/client_server_fifo") == -1) {
-        perror("[client-server-fifo] Erro ao eliminar ficheiro temporário");
-        _exit(-1);
-    }
-    if (unlink("/tmp/processing_fifo") == -1) {
-        perror("[processing_fifo] Erro ao eliminar ficheiro temporário");
-        _exit(-1);
-    }
-    _exit(0);
-}
 //Handler do sinal SIGCHLD
 void sigchld_handler(int signum) {
     char *tok = strdup(inProcess[--nProcesses]); //Guarda o comando (Alterações necessárias aqui)
     strsep(&tok, " ");
     strsep(&tok, " ");
-    strsep(&tok, " ");
     char *resto = strsep(&tok, "\n");
     freeSlots(resto); //Coloca os filtros como novamente disponíveis.
     free(tok);
+}
+
+void term_handler(int signum) {
+    int status;
+    pid_t pid;
+    while((pid = waitpid(-1, &status, WNOHANG)) > 0) wait(NULL); //Termina todos os filhos.
+
+    unlink("/tmp/main");
+    if (unlink("/tmp/main") == -1) {
+        perror("[tmp main] Erro ao eliminar ficheiro temporário");
+        _exit(-1);
+    }
+
+    write(1, "\nA terminar servidor.\n", strlen("\nA terminar servidor.\n"));
+    _exit(0);
 }
 
 //Atualiza informação sobre filtros em uso.
@@ -312,6 +299,10 @@ int executaProc(char *comando) {
 
     inProcess[nProcesses++] = strdup(comando);
     updateSlots(resto);
+
+    for (int i = 0; i < nProcesses; i++) {
+        printf("[DEBUG Task #%d: %s]\n", i+1, inProcess[i]);
+    }
     
     char **argumentos = setArgs(resto);
 
@@ -341,6 +332,7 @@ int executaProc(char *comando) {
 
     return 0;
 }
+
 
 int main(int argc, char *argv[]) {
 
@@ -405,22 +397,12 @@ int main(int argc, char *argv[]) {
     close(fd_conf);
 
 
-    //cria os named pipes
-    int client_server_fifo;
-    int server_client_fifo;
-    int processing_fifo;
+    //-------
+
     Queue *q = initQueue();
 
-    if(mkfifo("/tmp/client_server_fifo",0600) == -1) {
-        perror("Named pipe 1 error");
-    }
-
-    if(mkfifo("/tmp/server_client_fifo",0600) == -1) {
-        perror("Named pipe 2 error");
-    }
-
-    if(mkfifo("/tmp/processing_fifo",0600) == -1) {
-        perror("Pipe Fifo error");
+    if (mkfifo("/tmp/main",0666) == -1) {
+        perror("Mkfifo");
     }
     
     //Declaração dos handlers dos sinais.
@@ -432,7 +414,7 @@ int main(int argc, char *argv[]) {
         perror("[signal] erro da associação do sigchld_handler.");
         exit(-1);
     }
-    if (signal(SIGTERM, sigterm_handler) == SIG_ERR) {
+    if (signal(SIGTERM, term_handler) == SIG_ERR) {
         perror("[signal] erro da associação do sigterm_handler.");
         exit(-1);
     }
@@ -440,24 +422,18 @@ int main(int argc, char *argv[]) {
     //Abrir pipe
     char comando[1024];
 
-    client_server_fifo = open("/tmp/client_server_fifo",O_RDONLY);
-    if(client_server_fifo == -1) perror("Erro fifo cliente-server");
+    int pipe = open("/tmp/main", O_RDONLY);
+    if(pipe == -1) perror("/tmp/main");
     
-    server_client_fifo = open("/tmp/server_client_fifo",O_WRONLY);
-    if(server_client_fifo == -1) perror("Erro fifo server-cliente");
-
-    processing_fifo = open("/tmp/processing_fifo",O_WRONLY);
-    if(processing_fifo == -1) perror("Erro fifo processing_fifo");
-
-
     //Setup da função poll()
     struct pollfd *pfd = calloc(1, sizeof(struct pollfd));
-    pfd->fd = client_server_fifo;
+    pfd->fd = pipe;
     pfd->events = POLLIN;
     pfd->revents = POLLOUT;
 
     int leitura = 0;
     int hasPriority = -1;
+
     while(1) {
 
         if (canQ(q) == 1) { //Verifica sempre se pode executar o que esta na fila.
@@ -468,7 +444,6 @@ int main(int argc, char *argv[]) {
             shiftQueue(q,q->filled+1);
             q->filled--;
             
-            write(processing_fifo, "Processing...\n", strlen("Processing...\n")); //informa o cliente que o pedido começou a ser processado.
             executaProc(comandoQ);
         }
         //Execução bloqueada até ser lida alguma coisa no pipe. Diminui utilização de CPU. 
@@ -476,13 +451,35 @@ int main(int argc, char *argv[]) {
             poll(pfd, 1, -1); //Verifica se o pipe está disponivel para leitura
         }
 
-        leitura = read(client_server_fifo,comando,sizeof(comando));
+        //ler pid do cliente
+        char pid[50];
+        int res = 0;
+        while (read(pipe, pid+res,1) > 0) {
+            res++;
+        }
+        pid[res++] = '\0';
+
+        char pid_ler_cliente[strlen(pid)+6];
+        strcpy(pid_ler_cliente, "/tmp/w");
+        strcpy(pid_ler_cliente+6,pid);
+        res = 0;
+
+        int pipe_ler_cliente = open(pid_ler_cliente, O_RDONLY);
+
+        leitura = read(pipe_ler_cliente,comando,sizeof(comando));
         //Handling de erro no caso de ocorrer algum problema na leitura.
         if(leitura == -1) perror("Erro no read");        
         
         comando[leitura] = 0;
 
         if(leitura > 0 && (strncmp(comando,"status",leitura) == 0)) {
+            
+            char pid_escrever[strlen(pid)+6];
+            strcpy(pid_escrever, "/tmp/r");
+            strcpy(pid_escrever+6,pid);
+
+            int pipe_escrever = open(pid_escrever, O_WRONLY);
+
             //printf("Pipe lido! \n");
             char mensagem[5000];
             char res[5000];
@@ -510,16 +507,24 @@ int main(int argc, char *argv[]) {
             sprintf(mensagem, "pid: %d\n", getpid());
             strcat(res, mensagem);
             strcat(res,"\0");
-            write(server_client_fifo,res,strlen(res));
+            write(pipe_escrever,res,strlen(res));
+
+            close(pipe_escrever);
         }
 
         else if(leitura > 0 && (strncmp(comando,"proc-file",9) == 0)) {
-            write(processing_fifo, "Pending...\n", strlen("Pending...\n"));
+            
+            char pid_escrever[strlen(pid)+6];
+            strcpy(pid_escrever, "/tmp/r");
+            strcpy(pid_escrever+6,pid);
+
+            int pipe_escrever = open(pid_escrever, O_WRONLY);
+
+            write(pipe_escrever, "Pending...\n", strlen("Pending...\n"));
 
             printf("[DEBUG Comando Inicial] %s \n",comando);
 
             char *auxComando;
-
             //Verificar se o comando tem prioridade
             if(comando[10] == '-' && comando[11] == 'p') {
                 hasPriority = 0;
@@ -539,10 +544,12 @@ int main(int argc, char *argv[]) {
             printf("[DEBUG Tem prioridade?] %d \n",hasPriority);
 
             if(check_disponibilidade(strdup(auxComando)) == 1) { //Verifica se temos filtros suficientes para executar o comando
-                write(processing_fifo, "Processing...\n", strlen("Processing...\n")); //informa o cliente que o pedido começou a ser processado.
+                write(pipe_escrever, "Processing...\n", strlen("Processing...\n")); //informa o cliente que o pedido começou a ser processado.
                 executaProc(auxComando);
-            } else {
 
+                write(pipe_escrever, "Concluded\n", strlen("Concluded\n"));
+                close(pipe_escrever);
+            } else {
                 //Adicionar pedido à queue
                 q->line[++q->filled] = strdup(auxComando);
                 
@@ -553,11 +560,11 @@ int main(int argc, char *argv[]) {
                 } else {
                     q->pri[q->filled] = 0;
                 }
-
+                
                 //Dar sort à Queue
                 push(q,q->filled+1);
             }
-            
+
         }
     }
 }

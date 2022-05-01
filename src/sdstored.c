@@ -505,9 +505,7 @@ int main(int argc, char *argv[]) {
 
         if(leitura > 0 && (strncmp(comando,"status",leitura) == 0)) {
             
-            status(pid);
-
-            /*
+            
             char pid_escrever[strlen(pid)+6];
             strcpy(pid_escrever, "/tmp/r");
             strcpy(pid_escrever+6,pid);
@@ -541,10 +539,7 @@ int main(int argc, char *argv[]) {
             sprintf(mensagem, "pid: %d\n", getpid());
             strcat(res, mensagem);
             strcat(res,"\0");
-            write(pipe_escrever,res,strlen(res));
-
-            close(pipe_escrever);
-            */
+            write(pipe_escrever,res,strlen(res)+1);
             
         }
 

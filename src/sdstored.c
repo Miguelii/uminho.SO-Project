@@ -316,11 +316,17 @@ int executaProc(char *comando) {
     if(pid == 0) {
         int input_f;
         input_f = open(input, O_RDONLY);
-        if(input_f == -1) perror("Erro no open input");
+        if(input_f == -1) {
+            perror("Erro no open input");
+            return -1;
+        }
 
         int output_f;
         output_f = open(output, O_CREAT | O_TRUNC | O_WRONLY, 0666);
-        if(output_f == -1) perror("Erro no open output");
+        if(output_f == -1) {
+            perror("Erro no open output");
+            return -1;
+        }
         
         execs(input_f,output_f,argumentos);
         _exit(0);
@@ -333,36 +339,6 @@ int executaProc(char *comando) {
     return 0;
 }
 
-void status(char *pid) {
-    pid_t f;
-    f = fork();
-    int status;
-    if (f==0) {
-
-        char pid_escrever[strlen(pid)+6];
-        strcpy(pid_escrever, "/tmp/r");
-        strcpy(pid_escrever+6,pid);
-
-        int pipe_escrever = open(pid_escrever, O_WRONLY);
-
-        //printf("Pipe lido! \n");
-        char mensagem[5000];
-        char res[5000];
-        res[0] = 0;
-
-
-        int r = sprintf(mensagem, "Transf nop: %d/%d (Running/Max) \n",nop_cur,maxnop);
-        strcat(res,mensagem);
-        sprintf(mensagem, "Transf bcompress: %d/%d (Running/Max) \n",bcompress_cur,maxbcompress);
-        strcat(res+r,mensagem);
-        //strcat(res,"\0");
-        write(pipe_escrever,res,strlen(res));
-
-        close(pipe_escrever);
-
-        _exit(0);
-    }
-}
 
 
 int main(int argc, char *argv[]) {
@@ -504,7 +480,7 @@ int main(int argc, char *argv[]) {
         comando[leitura] = 0;
 
         if(leitura > 0 && (strncmp(comando,"status",leitura) == 0)) {
-            
+            //./bin/sdstore proc-file samples/teste.txt output/output.txt nop
             char pid_escrever[strlen(pid)+6];
             strcpy(pid_escrever, "/tmp/r");
             strcpy(pid_escrever+6,pid);
@@ -545,7 +521,6 @@ int main(int argc, char *argv[]) {
         }
 
         else if(leitura > 0 && (strncmp(comando,"proc-file",9) == 0)) {
-            
             char pid_escrever[strlen(pid)+6];
             strcpy(pid_escrever, "/tmp/r");
             strcpy(pid_escrever+6,pid);

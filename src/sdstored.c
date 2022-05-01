@@ -44,22 +44,22 @@ int canQ (Queue *q) {
 
 void push(Queue *q, int length) {
 
-  int temp = 0;
   
   for (int i = 0; i < length; i++) {     
     for (int j = i+1; j < length; j++) {     
        if(q->pri[i] < q->pri[j]) { 
          
           //Swap no array dos comandos
-          Queue *temp = q;
+          char **temp;
           temp = q->line[i];
           q->line[i] = q->line[j];
           q->line[j] = temp;
           
           //Swap no array das prioridades
-          temp = q->pri[i];    
+          int *auxtemp;
+          auxtemp = q->pri[i];    
           q->pri[i] = q->pri[j];    
-          q->pri[j] = temp;    
+          q->pri[j] = auxtemp;    
        }     
     }     
   } 
@@ -333,6 +333,37 @@ int executaProc(char *comando) {
     return 0;
 }
 
+void status(char *pid) {
+    pid_t f;
+    f = fork();
+    int status;
+    if (f==0) {
+
+        char pid_escrever[strlen(pid)+6];
+        strcpy(pid_escrever, "/tmp/r");
+        strcpy(pid_escrever+6,pid);
+
+        int pipe_escrever = open(pid_escrever, O_WRONLY);
+
+        //printf("Pipe lido! \n");
+        char mensagem[5000];
+        char res[5000];
+        res[0] = 0;
+
+
+        int r = sprintf(mensagem, "Transf nop: %d/%d (Running/Max) \n",nop_cur,maxnop);
+        strcat(res,mensagem);
+        sprintf(mensagem, "Transf bcompress: %d/%d (Running/Max) \n",bcompress_cur,maxbcompress);
+        strcat(res+r,mensagem);
+        //strcat(res,"\0");
+        write(pipe_escrever,res,strlen(res));
+
+        close(pipe_escrever);
+
+        _exit(0);
+    }
+}
+
 
 int main(int argc, char *argv[]) {
 
@@ -474,6 +505,9 @@ int main(int argc, char *argv[]) {
 
         if(leitura > 0 && (strncmp(comando,"status",leitura) == 0)) {
             
+            status(pid);
+
+            /*
             char pid_escrever[strlen(pid)+6];
             strcpy(pid_escrever, "/tmp/r");
             strcpy(pid_escrever+6,pid);
@@ -510,6 +544,8 @@ int main(int argc, char *argv[]) {
             write(pipe_escrever,res,strlen(res));
 
             close(pipe_escrever);
+            */
+            
         }
 
         else if(leitura > 0 && (strncmp(comando,"proc-file",9) == 0)) {

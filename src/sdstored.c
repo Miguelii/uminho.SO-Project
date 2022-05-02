@@ -26,6 +26,8 @@ void shiftQueue(Queue *q,int n);
 void freeSlots(char *arg);
 int check_disponibilidade (char *command);
 
+
+//Função para iniciar a Queue
 Queue *initQueue () {
     Queue *fila = calloc(1, sizeof(struct queue));
     fila->line = (char **) calloc(100, sizeof(char *));
@@ -42,9 +44,8 @@ int canQ (Queue *q) {
     return 0;
 }
 
+//Ordena a Queue em função da prioridade
 void push(Queue *q, int length) {
-
-  
   for (int i = 0; i < length; i++) {     
     for (int j = i+1; j < length; j++) {     
        if(q->pri[i] < q->pri[j]) { 
@@ -65,6 +66,7 @@ void push(Queue *q, int length) {
   } 
 }
 
+//Dequeue do elemento à cabeça da Queue
 void shiftQueue(Queue *q,int n) {
     //Shift para esq no array das prioridades
     for(int i=0;i<n-1;i++){
@@ -88,6 +90,7 @@ char *inProcess[1024]; //Processos em execução
 
 char *dir; //Diretoria dos executáveis dos filtros.
 
+//Handler do sinal SIGINT
 void sigint_handler (int signum) {
     int status;
     pid_t pid;  
@@ -113,6 +116,7 @@ void sigchld_handler(int signum) {
     free(tok);
 }
 
+//Handler do sinal SIGTERM
 void term_handler(int signum) {
     int status;
     pid_t pid;
@@ -184,7 +188,12 @@ int check_disponibilidade (char *command) {
     return 1;
 }
 
-// Pega no array resto e substitui as transformaçoes para as respetivas diretorias
+/* Pega no array resto e substitui as transformaçoes para as respetivas diretorias
+Por exemplo, se o array tiver:
+nop bcompress
+Fica:
+./bin/sdstore-transf/nop ./bin/sdstore-transf/bcompress
+*/
 char **setArgs(char *resto) {
     int current = 0;
     char res[50];
@@ -240,10 +249,12 @@ char **setArgs(char *resto) {
     return argumentos;
 }
 
+
 void execs(int input, int output, char ** argumentos) {
     int i = 0;
     int pip[2];
 
+    //Preparar para executar as transformações
     while(argumentos[i]!=NULL) {
         if (i != 0) {
             dup2(pip[0],0);
@@ -272,14 +283,12 @@ void execs(int input, int output, char ** argumentos) {
         if(f == -1) {
             perror("Erro fork execs");
             _exit(-1);
-        } else if (f == 0) {
+        } else if (f == 0) { //Executa todas as transformações pedidas pelo utilizador
             char *executavel = malloc(sizeof(char) * 1024);
             strcpy(executavel, argumentos[i]);
             execlp(executavel, executavel, NULL);
             perror("Exec");
             _exit(-1);
-
-            //execvp(argumentos[i], &argumentos[i]
         }
 
         i++;
@@ -290,19 +299,17 @@ void execs(int input, int output, char ** argumentos) {
 int executaProc(char *comando) {
     char *found;
     char *args = strdup(comando);
-    //found = strsep(&args, " ");
     int status;
 
     char *input = strsep(&args, " "); //Guarda o nome e path do ficheiro de input.
     char *output = strsep(&args, " "); //Guarda nome e path do ficheiro de output.
     char *resto = strsep(&args, "\n"); //Guarda os filtros pedidos pelo utilizador.
 
+    //Guardar processo em execução
     inProcess[nProcesses++] = strdup(comando);
-    updateSlots(resto);
 
-    for (int i = 0; i < nProcesses; i++) {
-        printf("[DEBUG Task #%d: %s]\n", i+1, inProcess[i]);
-    }
+    //Aumenta o numero actual das transformações
+    updateSlots(resto);
     
     char **argumentos = setArgs(resto);
 
@@ -315,6 +322,7 @@ int executaProc(char *comando) {
 
     if(pid == 0) {
         int input_f;
+        //Abre o ficheiro input fornecido pelo utilizador
         input_f = open(input, O_RDONLY);
         if(input_f == -1) {
             perror("Erro no open input");
@@ -322,6 +330,7 @@ int executaProc(char *comando) {
         }
 
         int output_f;
+        //Abre o ficheiro output fornecido pelo utilizador
         output_f = open(output, O_CREAT | O_TRUNC | O_WRONLY, 0666);
         if(output_f == -1) {
             perror("Erro no open output");
@@ -340,7 +349,6 @@ int executaProc(char *comando) {
 }
 
 
-
 int main(int argc, char *argv[]) {
 
     if(argc < 3) {
@@ -357,9 +365,14 @@ int main(int argc, char *argv[]) {
 
     char buffer[1024];
     int n;
+
+    //Abrir a diretoria do ficheiro de configuração
     int fd_conf = open(argv[1],O_RDONLY);
     if(fd_conf == -1) perror("Erro no .conf");
 
+    /*
+    Ciclo para ler ficheiro de configuração e guardar o numero máximo de cada transformação
+    */
     while((n = read(fd_conf,buffer,sizeof(buffer))) > 0) {
         char *token = strtok(buffer, "\n");  // breaks buffer into a series of tokens using the delimiter \n
         do {
@@ -397,17 +410,20 @@ int main(int argc, char *argv[]) {
         } while((token = strtok(NULL,"\n")));
     }
 
+    //Copia para dir a diretoria da pasta das transformações
     dir = strcat(strdup(argv[2]), "/");
 
     write(1, "Servidor iniciado com sucesso!\n", strlen("Servidor iniciado com sucesso!\n"));
 
+    //Fechamos o ficheiro de configuração
     close(fd_conf);
-
 
     //-------
 
+    //Iniciar a Queue
     Queue *q = initQueue();
 
+    //Criar o pipe com nome main
     if (mkfifo("/tmp/main",0666) == -1) {
         perror("Mkfifo");
     }
@@ -426,9 +442,10 @@ int main(int argc, char *argv[]) {
         exit(-1);
     }
 
-    //Abrir pipe
+ 
     char comando[1024];
 
+    //Abrir pipe main para leitura
     int pipe = open("/tmp/main", O_RDONLY);
     if(pipe == -1) perror("/tmp/main");
     
@@ -442,12 +459,14 @@ int main(int argc, char *argv[]) {
     int hasPriority = -1;
 
     while(1) {
+        
+        //Primeira verificação do servidor é que há algo na Queue para correr
+        if (canQ(q) == 1) { 
 
-        if (canQ(q) == 1) { //Verifica sempre se pode executar o que esta na fila.
             //Caso de poder executar a fila, usa mesmo código do transform que esta mais em baixo.
             char *comandoQ = strdup(q->line[q->pos]);
 
-            //Shift da queue
+            //Dequeue do primeiro elemento
             shiftQueue(q,q->filled+1);
             q->filled--;
             
@@ -458,36 +477,46 @@ int main(int argc, char *argv[]) {
             poll(pfd, 1, -1); //Verifica se o pipe está disponivel para leitura
         }
 
-        //ler pid do cliente
         char pid[50];
         int res = 0;
+        
+        //Read do pipe main para guardar o pid do cliente
         while (read(pipe, pid+res,1) > 0) {
             res++;
         }
         pid[res++] = '\0';
 
+        //Criamos um array pid_ler_cliente onde vai conter "/tmp/w" +  o pid do cliente
         char pid_ler_cliente[strlen(pid)+6];
         strcpy(pid_ler_cliente, "/tmp/w");
         strcpy(pid_ler_cliente+6,pid);
         res = 0;
 
+        //Abre o pipe_ler_cliente para escrita
         int pipe_ler_cliente = open(pid_ler_cliente, O_RDONLY);
 
+        //Read do pipe_ler_cliente
         leitura = read(pipe_ler_cliente,comando,sizeof(comando));
+
         //Handling de erro no caso de ocorrer algum problema na leitura.
         if(leitura == -1) perror("Erro no read");        
         
         comando[leitura] = 0;
 
+        /*
+        Caso o primeiro argumento lido do pipe_ler_cliente seja "status"
+        */
         if(leitura > 0 && (strncmp(comando,"status",leitura) == 0)) {
-            //./bin/sdstore proc-file samples/teste.txt output/output.txt nop
+            //status(pid);
+            
+            //Criamos um array pid_ler onde vai conter "/tmp/r" +  o pid do cliente
             char pid_escrever[strlen(pid)+6];
             strcpy(pid_escrever, "/tmp/r");
             strcpy(pid_escrever+6,pid);
 
+            //Abre o pipe_escrever para escrita
             int pipe_escrever = open(pid_escrever, O_WRONLY);
 
-            //printf("Pipe lido! \n");
             char mensagem[5000];
             char res[5000];
             res[0] = 0;
@@ -517,14 +546,19 @@ int main(int argc, char *argv[]) {
             write(pipe_escrever,res,strlen(res)+1);
             
             close(pipe_escrever);
-            
         }
 
+        /*
+        Caso o primeiro argumento lido do pipe_ler_cliente seja "proc-file"
+        */
         else if(leitura > 0 && (strncmp(comando,"proc-file",9) == 0)) {
+
+            //Criamos um array pid_ler onde vai conter "/tmp/r" +  o pid do cliente
             char pid_escrever[strlen(pid)+6];
             strcpy(pid_escrever, "/tmp/r");
             strcpy(pid_escrever+6,pid);
 
+            //Abre o pipe_escrever para escrita
             int pipe_escrever = open(pid_escrever, O_WRONLY);
 
             write(pipe_escrever, "Pending...\n", strlen("Pending...\n"));
@@ -532,6 +566,7 @@ int main(int argc, char *argv[]) {
             printf("[DEBUG Comando Inicial] %s \n",comando);
 
             char *auxComando;
+
             //Verificar se o comando tem prioridade
             if(comando[10] == '-' && comando[11] == 'p') {
                 hasPriority = 0;
@@ -550,8 +585,11 @@ int main(int argc, char *argv[]) {
             printf("[DEBUG Comando Final] %s \n",auxComando);
             printf("[DEBUG Tem prioridade?] %d \n",hasPriority);
 
-            if(check_disponibilidade(strdup(auxComando)) == 1) { //Verifica se temos filtros suficientes para executar o comando
-                write(pipe_escrever, "Processing...\n", strlen("Processing...\n")); //informa o cliente que o pedido começou a ser processado.
+            //Verifica se temos filtros suficientes para executar o comando
+            if(check_disponibilidade(strdup(auxComando)) == 1) { 
+
+                //informa o cliente que o pedido começou a ser processado.
+                write(pipe_escrever, "Processing...\n", strlen("Processing...\n")); 
                 executaProc(auxComando);
 
                 write(pipe_escrever, "Concluded\n", strlen("Concluded\n"));
@@ -563,12 +601,12 @@ int main(int argc, char *argv[]) {
                 //Atribuir a prioridade
                 char *aux = strdup(comando);
                 if(hasPriority == 0) {
-                    q->pri[q->filled] = atoi(&aux[27]);
+                    q->pri[q->filled] = atoi(&aux[13]);
                 } else {
                     q->pri[q->filled] = 0;
                 }
                 
-                //Dar sort à Queue
+                //Push do comando para a posição dado a sua prioridade
                 push(q,q->filled+1);
             }
 

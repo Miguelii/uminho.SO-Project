@@ -57,26 +57,29 @@ void term_handler() {
 
 int main(int argc, char *argv[]) {
     
-
+    /*
+    Caso o cliente escreva no stdin "status" vamos executar o seguinte bloco de código
+    */
     if(strcmp(argv[1],"status") == 0) {
-        printf("[DEGUG] Status lido! \n");
 
-        //Criar pipes para o cliente
         char pid[50];
+
+        //Copiamos o pid do cliente para o array pid
         itoa(getpid(), pid);
 
-        printf("Pid Debug %lu\n",getpid());
-
+        //Criamos um array pid_escrever onde vai conter "/tmp/w" +  o pid do cliente
         char pid_escrever[strlen(pid)+6];
         strcpy(pid_escrever, "/tmp/w");
         strcpy(pid_escrever+6,pid);
 
+        //Criamos um array pid_ler onde vai conter "/tmp/r" +  o pid do cliente
         char pid_ler[strlen(pid)+6];
         strcpy(pid_ler, "/tmp/r");
         strcpy(pid_ler+6,pid);
 
-
+        //Criamos dois pipes com nome dos array pid_escrever e pid_ler
         if (mkfifo(pid_ler, 0666) == 0 && mkfifo(pid_escrever, 0666) == 0) {
+            //Sinais
             if (signal(SIGINT, term_handler) == SIG_ERR) {
                 unlink(pid_ler);
                 unlink(pid_escrever);
@@ -90,6 +93,7 @@ int main(int argc, char *argv[]) {
                 _exit(-1);
             }
 
+            // Abrimos o pipe principal do servidor
             int pipePrincipal = open("/tmp/main", O_WRONLY);
 
             if (pipePrincipal == -1) {
@@ -99,11 +103,12 @@ int main(int argc, char *argv[]) {
                 _exit(-1);
             }
 
-            //Escrever pid do cliente para o pipe main
+            //Escreve pid do cliente para o pipe main
             for (int i = 0; i < strlen(pid); i++)
                 write(pipePrincipal, pid+i, 1);
             close(pipePrincipal);
 
+            //Abre o pipe_escrever para escrita
             int pipe_escrever = open(pid_escrever, O_WRONLY);
 
             if (pipe_escrever == -1) {
@@ -113,12 +118,17 @@ int main(int argc, char *argv[]) {
                 _exit(-1);
             }
 
+            //Escrevemos no pipe_escrever "status"
             write(pipe_escrever, "status", 6);
             close(pipe_escrever);
 
 
-            //obter resposta
+            /*
+            Resposta do servidor
+            */
             char buffer;
+
+            //Abre o pipe_ler para leitura
             int pipe_ler = open(pid_ler, O_RDONLY);
 
             if (pipe_ler == -1) {
@@ -128,15 +138,16 @@ int main(int argc, char *argv[]) {
                 _exit(-1);
             }
 
+            //Vamos ler do pipe e escrever o seu conteudo para o stdin
             while (read(pipe_ler, &buffer, 1) > 0) {
                 write(1, &buffer, 1);
             }
 
             close(pipe_ler);
             
+            //No fim fazemos unlink dos pipes criados para o cliente 
             unlink(pid_ler);
             unlink(pid_escrever);
-            printf("[DEBUG] Unlinks done\n");
         } else {
             perror("Mkfifo status");
             unlink(pid_ler);
@@ -145,24 +156,31 @@ int main(int argc, char *argv[]) {
         }
     }
 
+
+    /*
+    Caso o cliente escreva no stdin "proc-file" vamos executar o seguinte bloco de código
+    */
     if(strcmp(argv[1],"proc-file") == 0) {
         // ./sdstore proc-file priority input-filename output-filename transformation-id-1 transformation-id-2
 
-        //Criar pipes para o cliente
         char pid[50];
+
+        //Copiamos o pid do cliente para o array pid
         itoa(getpid(), pid);
 
-        printf("Pid Debug %lu\n",getpid());
-        
+        //Criamos um array pid_escrever onde vai conter "/tmp/w" +  o pid do cliente
         char pid_escrever[strlen(pid)+6];
         strcpy(pid_escrever, "/tmp/w");
         strcpy(pid_escrever+6,pid);
 
+        //Criamos um array pid_ler onde vai conter "/tmp/r" +  o pid do cliente
         char pid_ler[strlen(pid)+6];
         strcpy(pid_ler, "/tmp/r");
         strcpy(pid_ler+6,pid);
 
+        //Criamos dois pipes com nome dos array pid_escrever e pid_ler
         if (mkfifo(pid_ler, 0666) == 0 && mkfifo(pid_escrever, 0666) == 0) {
+            //Sinais
             if (signal(SIGINT, term_handler) == SIG_ERR) {
                 unlink(pid_ler);
                 unlink(pid_escrever);
@@ -189,6 +207,7 @@ int main(int argc, char *argv[]) {
                 write(pipePrincipal, pid+i, 1);
             close(pipePrincipal);
 
+            // Abrimos o pipe principal do servidor
             int pipe_escrever = open(pid_escrever, O_WRONLY);
 
             if (pipe_escrever == -1) {
@@ -197,7 +216,7 @@ int main(int argc, char *argv[]) {
                 _exit(-1);
             }
 
-            //Escever comando para o pipe
+            //Escever comando para o pipe_escrever
             char mensagem[5000];
             char res[5000];
             res[0] = 0; 
@@ -211,8 +230,13 @@ int main(int argc, char *argv[]) {
             write(pipe_escrever,res,strlen(res));
             close(pipe_escrever);
 
-            //obter resposta
+            
+            /*
+            Resposta do servidor
+            */
             char buffer;
+            
+            //Abre o pipe_ler para leitura
             int pipe_ler = open(pid_ler, O_RDONLY);
 
             if (pipe_ler == -1) {
@@ -222,14 +246,16 @@ int main(int argc, char *argv[]) {
                 _exit(-1);
             }
 
+            //Vamos ler do pipe e escrever o seu conteudo para o stdin
             while (read(pipe_ler, &buffer, 1) > 0) {
                 write(1, &buffer, 1);
             }
 
             close(pipe_ler);
+            
+            //No fim fazemos unlink dos pipes criados para o cliente 
             unlink(pid_ler);
             unlink(pid_escrever);
-            printf("[DEBUG] Unlinks done\n");
         }
 
     }

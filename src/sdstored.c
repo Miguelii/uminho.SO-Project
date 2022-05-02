@@ -90,47 +90,16 @@ char *inProcess[1024]; //Processos em execução
 
 char *dir; //Diretoria dos executáveis dos filtros.
 
-//Handler do sinal SIGINT
-void sigint_handler (int signum) {
-    int status;
-    pid_t pid;  
-    while((pid = waitpid(-1, &status, WNOHANG)) > 0) wait(NULL); //Termina todos os filhos.
-
-    //Remove os ficheiros temporários criados pelos named pipes
-    write(1, "\nA terminar servidor.\n", strlen("\nA terminar servidor.\n"));
-    if (unlink("/tmp/main") == -1) {
-        perror("[tmp/main] Erro ao eliminar ficheiro temporário");
-        _exit(-1);
-    }
-
-    _exit(0);
-}
-
-//Handler do sinal SIGCHLD
-void sigchld_handler(int signum) {
-    char *tok = strdup(inProcess[--nProcesses]); //Guarda o comando (Alterações necessárias aqui)
-    strsep(&tok, " ");
-    strsep(&tok, " ");
-    char *resto = strsep(&tok, "\n");
-    freeSlots(resto); //Coloca os filtros como novamente disponíveis.
-    free(tok);
-}
 
 //Handler do sinal SIGTERM
 void term_handler(int signum) {
-    int status;
-    pid_t pid;
-    while((pid = waitpid(-1, &status, WNOHANG)) > 0) wait(NULL); //Termina todos os filhos.
 
     unlink("/tmp/main");
-    if (unlink("/tmp/main") == -1) {
-        perror("[tmp main] Erro ao eliminar ficheiro temporário");
-        _exit(-1);
-    }
 
     write(1, "\nA terminar servidor.\n", strlen("\nA terminar servidor.\n"));
     _exit(0);
 }
+
 
 //Atualiza informação sobre filtros em uso.
  void updateSlots(char *arg) {
@@ -152,16 +121,16 @@ void term_handler(int signum) {
 //Atualiza informação sobre os filtros em uso
 void freeSlots(char *arg) {
     char *dup = strdup(arg);
-    char *tok;
+    char *tokAux;
     //Funcionamento igual ao updateSlots() mas decrementa em vez de incrementar.
-    while((tok = strsep(&dup, " "))) {
-        if (!strcmp(tok, "nop")) nop_cur--;
-        if (!strcmp(tok, "bcompress")) bcompress_cur--;
-        if (!strcmp(tok, "bdecompress")) bdecompress_cur--;
-        if (!strcmp(tok, "gcompress")) gcompress_cur--;
-        if (!strcmp(tok, "gdecompress")) gdecompress_cur--;
-        if (!strcmp(tok, "encrypt")) encrypt_cur--;
-        if (!strcmp(tok, "decrypt")) decrypt_cur--;
+    while((tokAux = strsep(&dup, " "))) {
+        if (!strcmp(tokAux, "nop")) nop_cur--;
+        if (!strcmp(tokAux, "bcompress")) bcompress_cur--;
+        if (!strcmp(tokAux, "bdecompress")) bdecompress_cur--;
+        if (!strcmp(tokAux, "gcompress")) gcompress_cur--;
+        if (!strcmp(tokAux, "gdecompress")) gdecompress_cur--;
+        if (!strcmp(tokAux, "encrypt")) encrypt_cur--;
+        if (!strcmp(tokAux, "decrypt")) decrypt_cur--;
     }
     free(dup);
 }
@@ -187,6 +156,7 @@ int check_disponibilidade (char *command) {
     free(comando);
     return 1;
 }
+
 
 /* Pega no array resto e substitui as transformaçoes para as respetivas diretorias
 Por exemplo, se o array tiver:
@@ -249,10 +219,21 @@ char **setArgs(char *resto) {
     return argumentos;
 }
 
+void fecharfilho(char *pid) {
+    printf("Filho fechado!\n");
+
+    kill(getpid(), SIGUSR1);
+    kill(atoi(pid), SIGUSR2);
+
+    _exit(0);
+}
+
 
 void execs(int input, int output, char ** argumentos) {
     int i = 0;
     int pip[2];
+
+    signal(SIGCHLD, SIG_DFL);
 
     //Preparar para executar as transformações
     while(argumentos[i]!=NULL) {
@@ -278,7 +259,7 @@ void execs(int input, int output, char ** argumentos) {
             }
         }
 
-        pid_t f;
+        int f;
         f = fork();
         if(f == -1) {
             perror("Erro fork execs");
@@ -296,57 +277,179 @@ void execs(int input, int output, char ** argumentos) {
 }
 
 
-int executaProc(char *comando) {
-    char *found;
-    char *args = strdup(comando);
-    int status;
-
-    char *input = strsep(&args, " "); //Guarda o nome e path do ficheiro de input.
-    char *output = strsep(&args, " "); //Guarda nome e path do ficheiro de output.
-    char *resto = strsep(&args, "\n"); //Guarda os filtros pedidos pelo utilizador.
-
-    //Guardar processo em execução
-    inProcess[nProcesses++] = strdup(comando);
-
-    //Aumenta o numero actual das transformações
-    updateSlots(resto);
+int monitor(char *input, char *output, char **argumentos, char *pid) {
     
-    char **argumentos = setArgs(resto);
-
-    //debug
-    for(int index = 0; argumentos[index]!=NULL; index++) printf("[DEBUG - Args] %s \n",argumentos[index]);
-    printf("------ FIM ARGS ------\n");
-
-    pid_t pid;
-    pid = fork();
-
-    if(pid == 0) {
-        int input_f;
+    printf("[DEBUG input] %s \n",input);
+    printf("[DEBUG output] %s \n",output);
+    int f = fork();
+    if(f == -1) {
+        perror("Fork");
+        kill(atoi(pid),SIGUSR2);
+        
+        fecharfilho(pid);
+    } else if(f == 0) {
         //Abre o ficheiro input fornecido pelo utilizador
+        int input_f;
         input_f = open(input, O_RDONLY);
         if(input_f == -1) {
             perror("Erro no open input");
-            return -1;
+            _exit(-1);
         }
 
-        int output_f;
         //Abre o ficheiro output fornecido pelo utilizador
+        int output_f;
         output_f = open(output, O_CREAT | O_TRUNC | O_WRONLY, 0666);
         if(output_f == -1) {
             perror("Erro no open output");
-            return -1;
+            _exit(-1);
         }
         
+        sleep(5);
         execs(input_f,output_f,argumentos);
         _exit(0);
     }
     else {
+        int status;
+        kill(atoi(pid),SIGUSR1);
+
         wait(&status);
+
+        fecharfilho(pid);
     }
-    free(args);
 
     return 0;
 }
+
+
+void status(char *pid) {
+    int f = fork();
+    if(f==0) {
+        signal(SIGINT, SIG_IGN);
+        signal(SIGTERM, SIG_IGN);
+        
+        //Criamos um array pid_ler onde vai conter "/tmp/r" +  o pid do cliente
+        char pid_escrever[strlen(pid)+6];
+        strcpy(pid_escrever, "/tmp/r");
+        strcpy(pid_escrever+6,pid);
+
+        //Abre o pipe_escrever para escrita
+        int pipe_escrever = open(pid_escrever, O_WRONLY);
+
+        char mensagem[5000];
+        char res[5000];
+        res[0] = 0;
+
+        for (int i = 0; i < nProcesses; i++) {
+            sprintf(mensagem, "Task #%d: %s\n", i+1, inProcess[i]);
+            strcat(res, mensagem);
+        }
+
+        sprintf(mensagem, "Transf nop: %d/%d (Running/Max) \n",nop_cur,maxnop);
+        strcat(res,mensagem);
+        sprintf(mensagem, "Transf bcompress: %d/%d (Running/Max) \n",bcompress_cur,maxbcompress);
+        strcat(res,mensagem);
+        sprintf(mensagem, "Transf bdecompress: %d/%d (Running/Max) \n",bdecompress_cur,maxbdecompress);
+        strcat(res,mensagem);
+        sprintf(mensagem, "Transf gcompress: %d/%d (Running/Max) \n",gcompress_cur,maxgcompress);
+        strcat(res,mensagem);
+        sprintf(mensagem, "Transf gdecompress: %d/%d (Running/Max) \n",gdecompress_cur,maxgdecompress);
+        strcat(res,mensagem);
+        sprintf(mensagem, "Transf encrypt: %d/%d (Running/Max) \n",encrypt_cur,maxencrypt);
+        strcat(res,mensagem);
+        sprintf(mensagem, "Transf decrypt: %d/%d (Running/Max) \n",decrypt_cur,maxdecrypt);
+        strcat(res,mensagem);
+        sprintf(mensagem, "pid: %d\n", getpid());
+        strcat(res, mensagem);
+        strcat(res,"\0");
+        write(pipe_escrever,res,strlen(res)+1);
+        
+        close(pipe_escrever);
+
+        _exit(0);
+    }
+}
+
+int procfile(Queue *q, char *pid, char *comando) {
+
+    //Criamos um array pid_ler onde vai conter "/tmp/r" +  o pid do cliente
+    char pid_escrever[strlen(pid)+6];
+    strcpy(pid_escrever, "/tmp/r");
+    strcpy(pid_escrever+6,pid);
+
+    //Abre o pipe_escrever para escrita
+    int pipe_escrever = open(pid_escrever, O_WRONLY);
+
+    write(pipe_escrever, "Pending...\n", strlen("Pending...\n"));
+
+    printf("[DEBUG Comando Inicial] %s \n",comando);
+
+    char *auxComando;
+    int hasPriority = -1;
+
+    //Verificar se o comando tem prioridade
+    if(comando[10] == '-' && comando[11] == 'p') {
+        hasPriority = 0;
+        char *args = strdup(comando);
+        strsep(&args, " ");
+        strsep(&args, " ");
+        strsep(&args, " ");
+        auxComando = strsep(&args, "\n");
+    } else {
+        hasPriority = -1;
+        char *args = strdup(comando);
+        strsep(&args, " ");
+        auxComando = strsep(&args, "\n");
+    }
+
+
+    //Verifica se temos filtros suficientes para executar o comando
+    if(check_disponibilidade(strdup(auxComando)) == 1) { 
+        
+        printf("[DEBUG Comando Fim] %s \n",auxComando);
+
+        char *args = strdup(auxComando);
+        char *input = strsep(&args, " "); //Guarda o nome e path do ficheiro de input.
+        char *output = strsep(&args, " "); //Guarda nome e path do ficheiro de output.
+        char *resto = strsep(&args, "\n"); //Guarda os filtros pedidos pelo utilizador.
+
+        
+        //Guardar processo em execução
+        inProcess[nProcesses++] = strdup(auxComando);
+
+        //Aumenta o numero actual das transformações
+        updateSlots(resto);
+        
+        char **argumentos = setArgs(resto);
+
+        write(pipe_escrever, "Processing...\n", strlen("Processing...\n")); 
+        close(pipe_escrever);
+
+        int f = fork();
+        if(f==0) {
+            signal(SIGINT, SIG_IGN);
+            signal(SIGTERM, SIG_IGN);
+            monitor(input,output,argumentos,pid);
+        }
+
+    } else {
+        //Adicionar pedido à queue
+        q->line[++q->filled] = strdup(auxComando);
+        
+        //Atribuir a prioridade
+        char *aux = strdup(comando);
+        if(hasPriority == 0) {
+            q->pri[q->filled] = atoi(&aux[13]);
+        } else {
+            q->pri[q->filled] = 0;
+        }
+        
+        //Push do comando para a posição dado a sua prioridade
+        push(q,q->filled+1);
+    }
+
+    return 0;
+}
+
 
 
 int main(int argc, char *argv[]) {
@@ -429,11 +532,11 @@ int main(int argc, char *argv[]) {
     }
     
     //Declaração dos handlers dos sinais.
-    if (signal(SIGINT, sigint_handler) == SIG_ERR) {
+    if (signal(SIGINT, term_handler) == SIG_ERR) {
         perror("[signal] erro da associação do signint_handler.");
         exit(-1);
     }
-    if (signal(SIGCHLD, sigchld_handler) == SIG_ERR) {
+    if (signal(SIGCHLD, SIG_IGN) == SIG_ERR) {
         perror("[signal] erro da associação do sigchld_handler.");
         exit(-1);
     }
@@ -456,7 +559,6 @@ int main(int argc, char *argv[]) {
     pfd->revents = POLLOUT;
 
     int leitura = 0;
-    int hasPriority = -1;
 
     while(1) {
         
@@ -470,7 +572,7 @@ int main(int argc, char *argv[]) {
             shiftQueue(q,q->filled+1);
             q->filled--;
             
-            executaProc(comandoQ);
+            //executaProc(comandoQ);
         }
         //Execução bloqueada até ser lida alguma coisa no pipe. Diminui utilização de CPU. 
         else {
@@ -507,109 +609,15 @@ int main(int argc, char *argv[]) {
         Caso o primeiro argumento lido do pipe_ler_cliente seja "status"
         */
         if(leitura > 0 && (strncmp(comando,"status",leitura) == 0)) {
-            //status(pid);
             
-            //Criamos um array pid_ler onde vai conter "/tmp/r" +  o pid do cliente
-            char pid_escrever[strlen(pid)+6];
-            strcpy(pid_escrever, "/tmp/r");
-            strcpy(pid_escrever+6,pid);
-
-            //Abre o pipe_escrever para escrita
-            int pipe_escrever = open(pid_escrever, O_WRONLY);
-
-            char mensagem[5000];
-            char res[5000];
-            res[0] = 0;
-
-            for (int i = 0; i < nProcesses; i++) {
-                sprintf(mensagem, "Task #%d: %s\n", i+1, inProcess[i]);
-                strcat(res, mensagem);
-            }
-
-            sprintf(mensagem, "Transf nop: %d/%d (Running/Max) \n",nop_cur,maxnop);
-            strcat(res,mensagem);
-            sprintf(mensagem, "Transf bcompress: %d/%d (Running/Max) \n",bcompress_cur,maxbcompress);
-            strcat(res,mensagem);
-            sprintf(mensagem, "Transf bdecompress: %d/%d (Running/Max) \n",bdecompress_cur,maxbdecompress);
-            strcat(res,mensagem);
-            sprintf(mensagem, "Transf gcompress: %d/%d (Running/Max) \n",gcompress_cur,maxgcompress);
-            strcat(res,mensagem);
-            sprintf(mensagem, "Transf gdecompress: %d/%d (Running/Max) \n",gdecompress_cur,maxgdecompress);
-            strcat(res,mensagem);
-            sprintf(mensagem, "Transf encrypt: %d/%d (Running/Max) \n",encrypt_cur,maxencrypt);
-            strcat(res,mensagem);
-            sprintf(mensagem, "Transf decrypt: %d/%d (Running/Max) \n",decrypt_cur,maxdecrypt);
-            strcat(res,mensagem);
-            sprintf(mensagem, "pid: %d\n", getpid());
-            strcat(res, mensagem);
-            strcat(res,"\0");
-            write(pipe_escrever,res,strlen(res)+1);
-            
-            close(pipe_escrever);
+            status(pid);
         }
 
         /*
         Caso o primeiro argumento lido do pipe_ler_cliente seja "proc-file"
         */
         else if(leitura > 0 && (strncmp(comando,"proc-file",9) == 0)) {
-
-            //Criamos um array pid_ler onde vai conter "/tmp/r" +  o pid do cliente
-            char pid_escrever[strlen(pid)+6];
-            strcpy(pid_escrever, "/tmp/r");
-            strcpy(pid_escrever+6,pid);
-
-            //Abre o pipe_escrever para escrita
-            int pipe_escrever = open(pid_escrever, O_WRONLY);
-
-            write(pipe_escrever, "Pending...\n", strlen("Pending...\n"));
-
-            printf("[DEBUG Comando Inicial] %s \n",comando);
-
-            char *auxComando;
-
-            //Verificar se o comando tem prioridade
-            if(comando[10] == '-' && comando[11] == 'p') {
-                hasPriority = 0;
-                char *args = strdup(comando);
-                strsep(&args, " ");
-                strsep(&args, " ");
-                strsep(&args, " ");
-                auxComando = strsep(&args, "\n");
-            } else {
-                hasPriority = -1;
-                char *args = strdup(comando);
-                strsep(&args, " ");
-                auxComando = strsep(&args, "\n");
-            }
-
-            printf("[DEBUG Comando Final] %s \n",auxComando);
-            printf("[DEBUG Tem prioridade?] %d \n",hasPriority);
-
-            //Verifica se temos filtros suficientes para executar o comando
-            if(check_disponibilidade(strdup(auxComando)) == 1) { 
-
-                //informa o cliente que o pedido começou a ser processado.
-                write(pipe_escrever, "Processing...\n", strlen("Processing...\n")); 
-                executaProc(auxComando);
-
-                write(pipe_escrever, "Concluded\n", strlen("Concluded\n"));
-                close(pipe_escrever);
-            } else {
-                //Adicionar pedido à queue
-                q->line[++q->filled] = strdup(auxComando);
-                
-                //Atribuir a prioridade
-                char *aux = strdup(comando);
-                if(hasPriority == 0) {
-                    q->pri[q->filled] = atoi(&aux[13]);
-                } else {
-                    q->pri[q->filled] = 0;
-                }
-                
-                //Push do comando para a posição dado a sua prioridade
-                push(q,q->filled+1);
-            }
-
+            procfile(q,pid,comando);
         }
     }
 }

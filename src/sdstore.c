@@ -181,12 +181,6 @@ int main(int argc, char *argv[]) {
         //Criamos dois pipes com nome dos array pid_escrever e pid_ler
         if (mkfifo(pid_ler, 0666) == 0 && mkfifo(pid_escrever, 0666) == 0) {
             //Sinais
-            if (signal(SIGINT, term_handler) == SIG_ERR) {
-                unlink(pid_ler);
-                unlink(pid_escrever);
-                perror("Signal1");
-                _exit(-1);
-            }
             if (signal(SIGTERM, term_handler) == SIG_ERR) {
                 unlink(pid_ler);
                 unlink(pid_escrever);

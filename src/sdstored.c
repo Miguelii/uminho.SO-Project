@@ -14,10 +14,10 @@
 // $ ./bin/sdstored etc/sdstored.conf bin/sdstore-transf
 
 typedef struct queue {
-    char **line; //Comando em espera.
+    char **line; //Array dos comandos em espera.
     int filled; //Inidice da cauda.
     int pos; //Proximo processo em execução.
-    int *pri; //prioridade
+    int *pri; //Arras das prioridades
 } Queue;
 
 void term_handler(int signum);
@@ -30,13 +30,14 @@ int check_disponibilidade (char *command);
 //Função para iniciar a Queue
 Queue *initQueue () {
     Queue *fila = calloc(1, sizeof(struct queue));
-    fila->line = (char **) calloc(100, sizeof(char *));
-    fila->pri = (int *) calloc(20, sizeof(int));
+    fila->line = (char **) calloc(50, sizeof(char *));
+    fila->pri = (int *) calloc(50, sizeof(int));
     fila->pos = 0;
     fila->filled = -1;
     return fila;
 }
 
+//Função para verificar se há algo na Queue para correr e se há transformações possíveis
 int canQ (Queue *q) {
     if (q->filled >= 0 && q->pos <= q->filled) {
         if (check_disponibilidade(q->line[q->pos])) return 1;
@@ -66,7 +67,7 @@ void push(Queue *q, int length) {
   } 
 }
 
-//Dequeue do elemento à cabeça da Queue
+//Dequeue do elemento no topo da Queue
 void shiftQueue(Queue *q,int n) {
     //Shift para esq no array das prioridades
     for(int i=0;i<n-1;i++){
@@ -143,6 +144,7 @@ void freeSlots(char *arg) {
 }
 
 //Retorna 1 se tivermos filtros disponiveis para executar a transformação.
+//Basta um filtro não estar disponível e a função retorna 0 (0 -> não há disponibilidade para execução do comando).
 int check_disponibilidade (char *command) {
     char *comando = strdup(command);
     char *found;
@@ -150,7 +152,6 @@ int check_disponibilidade (char *command) {
         found = strsep(&comando, " ");
     }
     found = strsep(&comando, " ");
-    //Basta um filtro não estar disponível e a função retorna 0 (0 -> não há disponibilidade para execução do comando).
     do {
         if (!strcmp(found, "nop")) if (nop_cur >= maxnop) return 0;
         if (!strcmp(found, "bcompress")) if (bcompress_cur >= maxbcompress) return 0;
@@ -169,7 +170,7 @@ int check_disponibilidade (char *command) {
 Por exemplo, se o array tiver:
 nop bcompress
 Fica:
-./bin/sdstore-transf/nop ./bin/sdstore-transf/bcompress
+/bin/sdstore-transf/nop /bin/sdstore-transf/bcompress
 */
 char **setArgs(char *resto) {
     int current = 0;
@@ -226,6 +227,7 @@ char **setArgs(char *resto) {
     return argumentos;
 }
 
+//Handler dos filhos
 void fecharfilho(char *pid) {
     printf("Filho fechado!\n");
 
@@ -236,13 +238,13 @@ void fecharfilho(char *pid) {
 }
 
 
+//Função para 
 void execs(int input, int output, char ** argumentos) {
     int i = 0;
     int pip[2];
 
     signal(SIGCHLD, SIG_DFL);
 
-    //Preparar para executar as transformações
     while(argumentos[i]!=NULL) {
         if (i != 0) {
             dup2(pip[0],0);
@@ -328,14 +330,14 @@ int monitor(char *input, char *output, char **argumentos, char *pid) {
     return 0;
 }
 
-
+//Função da opção de obter informação de utilização do servidor
 void status(char *pid) {
     int f = fork();
     if(f==0) {
         signal(SIGINT, SIG_IGN);
         signal(SIGTERM, SIG_IGN);
         
-        //Criamos um array pid_ler onde vai conter "/tmp/r" +  o pid do cliente
+        //Criamos um array pid_ler onde vai conter "/tmp/r" +  o pid do cliente recebido do pipe main
         char pid_escrever[strlen(pid)+6];
         strcpy(pid_escrever, "/tmp/r");
         strcpy(pid_escrever+6,pid);
@@ -377,6 +379,7 @@ void status(char *pid) {
     }
 }
 
+//Função da opção de executar uma ou várias transformações
 int procfile(Queue *q, char *pid, char *comando) {
 
     //Criamos um array pid_ler onde vai conter "/tmp/r" +  o pid do cliente
@@ -409,7 +412,6 @@ int procfile(Queue *q, char *pid, char *comando) {
         auxComando = strsep(&args, "\n");
     }
 
-
     //Verifica se temos filtros suficientes para executar o comando
     if(check_disponibilidade(strdup(auxComando)) == 1) { 
         
@@ -426,6 +428,7 @@ int procfile(Queue *q, char *pid, char *comando) {
         //Aumenta o numero actual das transformações
         updateSlots(resto);
         
+        //Set das diretorias das transformações
         char **argumentos = setArgs(resto);
 
         write(pipe_escrever, "Processing...\n", strlen("Processing...\n")); 
@@ -450,7 +453,7 @@ int procfile(Queue *q, char *pid, char *comando) {
             q->pri[q->filled] = 0;
         }
         
-        //Push do comando para a posição dado a sua prioridade
+        //Push do comando para a posição correta na queue dado a sua prioridade
         push(q,q->filled+1);
     }
 
@@ -525,10 +528,9 @@ int main(int argc, char *argv[]) {
 
     write(1, "Servidor iniciado com sucesso!\n", strlen("Servidor iniciado com sucesso!\n"));
 
-    //Fechamos o ficheiro de configuração
+    //Fechar ficheiro de configuração
     close(fd_conf);
 
-    //-------
 
     //Iniciar a Queue
     Queue *q = initQueue();
@@ -554,7 +556,6 @@ int main(int argc, char *argv[]) {
         exit(-1);
     }
 
- 
     char comando[1024];
 
     //Abrir pipe main para leitura
@@ -618,7 +619,6 @@ int main(int argc, char *argv[]) {
         Caso o primeiro argumento lido do pipe_ler_cliente seja "status"
         */
         if(leitura > 0 && (strncmp(comando,"status",leitura) == 0)) {
-            
             status(pid);
         }
 

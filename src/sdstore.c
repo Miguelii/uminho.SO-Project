@@ -38,6 +38,7 @@ void itoa(int n, char s[]){
     reverse(s);
 }
 
+//Handler do sinal SIGTERM e SIGINT
 void term_handler() {
     char pid[50];
     itoa(getpid(), pid);
@@ -55,33 +56,10 @@ void term_handler() {
     _exit(0);
 }
 
-
-long int findSize(char file_name[])
-{
-    // opening the file in read mode
-    FILE* fp = fopen(file_name, "r");
-  
-    // checking if the file exist or not
-    if (fp == NULL) {
-        printf("File Not Found!\n");
-        return -1;
-    }
-  
-    fseek(fp, 0L, SEEK_END);
-  
-    // calculating the size of the file
-    long int res = ftell(fp);
-  
-    // closing the file
-    fclose(fp);
-  
-    return res;
-}
-
 int main(int argc, char *argv[]) {
     
     /*
-    Caso o cliente escreva no stdin "status" vamos executar o seguinte bloco de código
+    Caso o cliente escreva no stdin "status"
     */
     if(strcmp(argv[1],"status") == 0) {
 
@@ -181,7 +159,7 @@ int main(int argc, char *argv[]) {
 
 
     /*
-    Caso o cliente escreva no stdin "proc-file" vamos executar o seguinte bloco de código
+    Caso o cliente escreva no stdin "proc-file"
     */
     if(strcmp(argv[1],"proc-file") == 0) {
         // ./sdstore proc-file priority input-filename output-filename transformation-id-1 transformation-id-2
@@ -224,7 +202,7 @@ int main(int argc, char *argv[]) {
                 write(pipePrincipal, pid+i, 1);
             close(pipePrincipal);
 
-            // Abrimos o pipe principal do servidor
+            // Abrir o pipe principal do servidor
             int pipe_escrever = open(pid_escrever, O_WRONLY);
 
             if (pipe_escrever == -1) {
@@ -234,8 +212,8 @@ int main(int argc, char *argv[]) {
             }
 
             //Escever comando para o pipe_escrever
-            char mensagem[5000];
-            char res[5000];
+            char mensagem[1024];
+            char res[1024];
             res[0] = 0; 
 
             for(int cont = 1; cont<argc;cont++){
@@ -263,7 +241,7 @@ int main(int argc, char *argv[]) {
                 _exit(-1);
             }
 
-            //Vamos ler do pipe e escrever o seu conteudo para o stdin
+            //Ler do pipe e escrever o seu conteudo para o stdin
             while (read(pipe_ler, &buffer, 1) > 0) {
                 write(1, &buffer, 1);
             }
@@ -271,24 +249,42 @@ int main(int argc, char *argv[]) {
             close(pipe_ler);
 
             
-            //File size
-            char mensagemBytes[1024];
-            char arrInput[50];  
-            char arrOutput[50];  
+            /*
+            Obter bytes dos ficheiros input e output usando a system call stat
+            */
+            struct stat stI;
+            struct stat stO;
+            char *arrInput;
+            char *arrOutput;
+            long sizeI = 0;
+            long sizeO = 0;  
+
+            //Copiar diretoria do input e output
             if(strcmp(argv[2],"-p")==0) {
-                strcpy(arrInput, strdup(argv[3]));
-                strcpy(arrOutput, strdup(argv[4]));
+                arrInput = malloc(strlen(argv[4])+1);
+                arrOutput = malloc(strlen(argv[5])+1);
+                strcpy(arrInput, strdup(argv[4]));
+                strcpy(arrOutput, strdup(argv[5]));
             } else {
+                arrInput = malloc(strlen(argv[2])+1);
+                arrOutput = malloc(strlen(argv[3])+1);
                 strcpy(arrInput, strdup(argv[2]));
                 strcpy(arrOutput, strdup(argv[3]));
             }
 
-            long int resI = findSize(arrInput);
-            long int resO = findSize(arrOutput);
+            //Obter tamanho
+            stat(arrInput,&stI);
+            sizeI = stI.st_size;
+            stat(arrOutput,&stO);
+            sizeO = stO.st_size;
 
-            sprintf(mensagem, "concluded (bytes-input: %ld, bytes-output: %ld)\n",resI,resO);
-            write(1, mensagem, strlen(mensagem)+1); 
+            char *mensagemBytes = malloc(sizeof(sizeI)*sizeof(sizeO) + 50);
+            sprintf(mensagemBytes, "Concluded (bytes-input: %ld, bytes-output: %ld)\n",sizeI,sizeO);
+            write(1, mensagemBytes, strlen(mensagemBytes)+1); 
 
+            free(arrInput);
+            free(arrOutput);
+            free(mensagemBytes);
 
             //Unlink dos pipes criados para o cliente 
             unlink(pid_ler);

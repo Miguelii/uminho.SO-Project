@@ -55,6 +55,29 @@ void term_handler() {
     _exit(0);
 }
 
+
+long int findSize(char file_name[])
+{
+    // opening the file in read mode
+    FILE* fp = fopen(file_name, "r");
+  
+    // checking if the file exist or not
+    if (fp == NULL) {
+        printf("File Not Found!\n");
+        return -1;
+    }
+  
+    fseek(fp, 0L, SEEK_END);
+  
+    // calculating the size of the file
+    long int res = ftell(fp);
+  
+    // closing the file
+    fclose(fp);
+  
+    return res;
+}
+
 int main(int argc, char *argv[]) {
     
     /*
@@ -246,8 +269,28 @@ int main(int argc, char *argv[]) {
             }
 
             close(pipe_ler);
+
             
-            //No fim fazemos unlink dos pipes criados para o cliente 
+            //File size
+            char mensagemBytes[1024];
+            char arrInput[50];  
+            char arrOutput[50];  
+            if(strcmp(argv[2],"-p")==0) {
+                strcpy(arrInput, strdup(argv[3]));
+                strcpy(arrOutput, strdup(argv[4]));
+            } else {
+                strcpy(arrInput, strdup(argv[2]));
+                strcpy(arrOutput, strdup(argv[3]));
+            }
+
+            long int resI = findSize(arrInput);
+            long int resO = findSize(arrOutput);
+
+            sprintf(mensagem, "concluded (bytes-input: %ld, bytes-output: %ld)\n",resI,resO);
+            write(1, mensagem, strlen(mensagem)+1); 
+
+
+            //Unlink dos pipes criados para o cliente 
             unlink(pid_ler);
             unlink(pid_escrever);
         }

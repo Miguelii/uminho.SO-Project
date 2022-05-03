@@ -100,6 +100,13 @@ void term_handler(int signum) {
     _exit(0);
 }
 
+void child_handler(int signum) {
+    pid_t pid;
+    int status;
+
+    /* EEEEXTEERMINAAATE! */
+    while((pid = waitpid(-1, &status, WNOHANG)) > 0);
+}
 
 //Atualiza informação sobre filtros em uso.
  void updateSlots(char *arg) {
@@ -285,7 +292,7 @@ int monitor(char *input, char *output, char **argumentos, char *pid) {
     if(f == -1) {
         perror("Fork");
         kill(atoi(pid),SIGUSR2);
-        
+        nop_cur--;
         fecharfilho(pid);
     } else if(f == 0) {
         //Abre o ficheiro input fornecido pelo utilizador
@@ -315,6 +322,7 @@ int monitor(char *input, char *output, char **argumentos, char *pid) {
         wait(&status);
 
         fecharfilho(pid);
+
     }
 
     return 0;
@@ -413,7 +421,7 @@ int procfile(Queue *q, char *pid, char *comando) {
         char *resto = strsep(&args, "\n"); //Guarda os filtros pedidos pelo utilizador.
 
         //Guardar processo em execução
-        inProcess[nProcesses++] = strdup(auxComando);
+        inProcess[nProcesses++] = strdup(comando);
 
         //Aumenta o numero actual das transformações
         updateSlots(resto);
@@ -531,14 +539,12 @@ int main(int argc, char *argv[]) {
     }
     
     //Declaração dos handlers dos sinais.
-    if (signal(SIGUSR1, usr1_handler) == SIG_ERR) {
-        perror("[signal] erro da associação do SIGUSR1.");
-        exit(-1);
-    }
     if (signal(SIGINT, term_handler) == SIG_ERR) {
         perror("[signal] erro da associação do signint_handler.");
         exit(-1);
     }
+    //child_handler
+    //SIG_IGN
     if (signal(SIGCHLD, SIG_IGN) == SIG_ERR) {
         perror("[signal] erro da associação do sigchld_handler.");
         exit(-1);

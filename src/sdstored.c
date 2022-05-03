@@ -304,13 +304,13 @@ int monitor(char *input, char *output, char **argumentos, char *pid) {
             _exit(-1);
         }
         
-        sleep(5);
+        //sleep(5);
         execs(input_f,output_f,argumentos);
         _exit(0);
     }
     else {
         int status;
-        kill(atoi(pid),SIGUSR1);
+        //kill(atoi(pid),SIGUSR1);
 
         wait(&status);
 
@@ -412,7 +412,6 @@ int procfile(Queue *q, char *pid, char *comando) {
         char *output = strsep(&args, " "); //Guarda nome e path do ficheiro de output.
         char *resto = strsep(&args, "\n"); //Guarda os filtros pedidos pelo utilizador.
 
-        
         //Guardar processo em execução
         inProcess[nProcesses++] = strdup(auxComando);
 
@@ -422,15 +421,15 @@ int procfile(Queue *q, char *pid, char *comando) {
         char **argumentos = setArgs(resto);
 
         write(pipe_escrever, "Processing...\n", strlen("Processing...\n")); 
-        close(pipe_escrever);
-
+        
         int f = fork();
         if(f==0) {
             signal(SIGINT, SIG_IGN);
             signal(SIGTERM, SIG_IGN);
             monitor(input,output,argumentos,pid);
         }
-
+        
+        close(pipe_escrever);
     } else {
         //Adicionar pedido à queue
         q->line[++q->filled] = strdup(auxComando);
@@ -532,6 +531,10 @@ int main(int argc, char *argv[]) {
     }
     
     //Declaração dos handlers dos sinais.
+    if (signal(SIGUSR1, usr1_handler) == SIG_ERR) {
+        perror("[signal] erro da associação do SIGUSR1.");
+        exit(-1);
+    }
     if (signal(SIGINT, term_handler) == SIG_ERR) {
         perror("[signal] erro da associação do signint_handler.");
         exit(-1);

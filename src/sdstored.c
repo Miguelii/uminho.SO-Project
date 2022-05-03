@@ -294,7 +294,7 @@ int monitor(char *input, char *output, char **argumentos, char *pid) {
     if(f == -1) {
         perror("Fork");
         kill(atoi(pid),SIGUSR2);
-        nop_cur--;
+
         fecharfilho(pid);
     } else if(f == 0) {
         //Abre o ficheiro input fornecido pelo utilizador

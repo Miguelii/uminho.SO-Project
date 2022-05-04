@@ -18,6 +18,7 @@ typedef struct queue {
     int filled; //Inidice da cauda.
     int pos; //Proximo processo em execução.
     int *pri; //Arras das prioridades
+    char **pidQ; //Array dos comandos em espera.
 } Queue;
 
 void term_handler(int signum);
@@ -25,12 +26,13 @@ void push(Queue *q, int length);
 void shiftQueue(Queue *q,int n);
 void freeSlots(char *arg);
 int check_disponibilidade (char *command);
-
+int check_disponibilidadeQueue (char *command);
 
 //Função para iniciar a Queue
 Queue *initQueue () {
     Queue *fila = calloc(1, sizeof(struct queue));
     fila->line = (char **) calloc(50, sizeof(char *));
+    fila->pidQ = (char **) calloc(50, sizeof(char *));
     fila->pri = (int *) calloc(50, sizeof(int));
     fila->pos = 0;
     fila->filled = -1;
@@ -40,7 +42,7 @@ Queue *initQueue () {
 //Função para verificar se há algo na Queue para correr e se há transformações possíveis
 int canQ (Queue *q) {
     if (q->filled >= 0 && q->pos <= q->filled) {
-        if (check_disponibilidade(q->line[q->pos])) return 1;
+        if (check_disponibilidadeQueue(q->line[q->pos])) return 1;
     }
     return 0;
 }
@@ -108,7 +110,9 @@ void child_handler(int signum) {
     wait(&status);
     //while((pid = waitpid(-1, &status, WNOHANG)) > 0);
 
-    freeSlots(inProcess[nProcesses-1]);
+    if(nProcesses>0) {
+        freeSlots(inProcess[nProcesses-1]);
+    }
 }
 
 //Atualiza informação sobre filtros em uso.
@@ -339,7 +343,7 @@ int monitor(char *input, char *output, char **argumentos, char *pid) {
             _exit(-1);
         }
         
-        //sleep(5);
+        sleep(5);
         execs(input_f,output_f,argumentos);
         _exit(0);
     }
@@ -469,8 +473,15 @@ int procfile(Queue *q, char *pid, char *comando) {
         close(pipe_escrever);
     } else {
         //Adicionar pedido à queue
-        q->line[++q->filled] = strdup(auxComando);
+        int status;
+        wait(&status);
+
+        procfile(q,pid,comando);
         
+        close(pipe_escrever);
+
+        
+        /*
         //Atribuir a prioridade
         char *aux = strdup(comando);
         if(hasPriority == 0) {
@@ -481,6 +492,7 @@ int procfile(Queue *q, char *pid, char *comando) {
         
         //Push do comando para a posição correta na queue dado a sua prioridade
         push(q,q->filled+1);
+        */
     }
 
     return 0;
@@ -603,17 +615,18 @@ int main(int argc, char *argv[]) {
 
             //Caso de poder executar a fila, usa mesmo código do transform que esta mais em baixo.
             char *comandoQ = strdup(q->line[q->pos]);
+            q->filled--;
+            q->pos++;
+            procfile(q,q->pidQ[q->pos-1],q->line[q->pos-1]);
+
 
             //Dequeue do primeiro elemento
-            shiftQueue(q,q->filled+1);
-            q->filled--;
-            
-            //executaProc(comandoQ);
-        }
-        //Execução bloqueada até ser lida alguma coisa no pipe. Diminui utilização de CPU. 
-        else {
+            //shiftQueue(q,q->filled+1);
+            //q->filled--;
+        } else {
             poll(pfd, 1, -1); //Verifica se o pipe está disponivel para leitura
         }
+
 
         char pid[50];
         int res = 0;

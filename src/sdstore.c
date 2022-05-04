@@ -250,40 +250,54 @@ int main(int argc, char *argv[]) {
 
             
             /*
-            Obter bytes dos ficheiros input e output usando a system call stat
+            Obter bytes dos ficheiros input e output
             */
-            struct stat stI;
-            struct stat stO;
-            char *arrInput;
-            char *arrOutput;
             long sizeI = 0;
             long sizeO = 0;  
+            char *bufferBytes[1024];
 
             //Copiar diretoria do input e output
             if(strcmp(argv[2],"-p")==0) {
-                arrInput = malloc(strlen(argv[4])+1);
-                arrOutput = malloc(strlen(argv[5])+1);
-                strcpy(arrInput, strdup(argv[4]));
-                strcpy(arrOutput, strdup(argv[5]));
-            } else {
-                arrInput = malloc(strlen(argv[2])+1);
-                arrOutput = malloc(strlen(argv[3])+1);
-                strcpy(arrInput, strdup(argv[2]));
-                strcpy(arrOutput, strdup(argv[3]));
-            }
+                int fdI = open(argv[4],O_RDONLY);
+                int fdO = open(argv[5],O_RDONLY);
 
-            //Obter tamanho
-            stat(arrInput,&stI);
-            sizeI = stI.st_size;
-            stat(arrOutput,&stO);
-            sizeO = stO.st_size;
+                int n;
+                while((n = read(fdI,bufferBytes,1)) > 0) {
+                    sizeI++;
+                }
+
+                close(fdI);
+
+                while((n = read(fdO,bufferBytes,1)) > 0) {
+                    sizeO++;
+                }
+                
+                close(fdO);
+
+
+            } else {
+                int fdI = open(argv[2],O_RDONLY);
+                int fdO = open(argv[3],O_RDONLY);
+
+                int n;
+                while((n = read(fdI,bufferBytes,1)) > 0) {
+                    sizeI++;
+                }
+
+                close(fdI);
+
+                int k;
+                while((k = read(fdO,bufferBytes,1)) > 0) {
+                    sizeO++;
+                }
+                
+                close(fdO);
+            }
 
             char *mensagemBytes = malloc(sizeof(sizeI)*sizeof(sizeO) + 50);
             sprintf(mensagemBytes, "Concluded (bytes-input: %ld, bytes-output: %ld)\n",sizeI,sizeO);
             write(1, mensagemBytes, strlen(mensagemBytes)+1); 
 
-            free(arrInput);
-            free(arrOutput);
             free(mensagemBytes);
 
             //Unlink dos pipes criados para o cliente 

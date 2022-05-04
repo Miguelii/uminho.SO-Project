@@ -105,8 +105,10 @@ void child_handler(int signum) {
     pid_t pid;
     int status;
 
-    /* EEEEXTEERMINAAATE! */
-    while((pid = waitpid(-1, &status, WNOHANG)) > 0);
+    wait(&status);
+    //while((pid = waitpid(-1, &status, WNOHANG)) > 0);
+
+    freeSlots(inProcess[nProcesses-1]);
 }
 
 //Atualiza informação sobre filtros em uso.
@@ -132,17 +134,41 @@ void freeSlots(char *arg) {
     char *tokAux;
     //Funcionamento igual ao updateSlots() mas decrementa em vez de incrementar.
     while((tokAux = strsep(&dup, " "))) {
-        if (!strcmp(tokAux, "nop")) nop_cur--;
-        if (!strcmp(tokAux, "bcompress")) bcompress_cur--;
-        if (!strcmp(tokAux, "bdecompress")) bdecompress_cur--;
-        if (!strcmp(tokAux, "gcompress")) gcompress_cur--;
-        if (!strcmp(tokAux, "gdecompress")) gdecompress_cur--;
-        if (!strcmp(tokAux, "encrypt")) encrypt_cur--;
-        if (!strcmp(tokAux, "decrypt")) decrypt_cur--;
+        if (!strcmp(tokAux, "nop")) {
+            nop_cur--;
+            if(nop_cur<0) nop_cur = 0;
+        }
+        if (!strcmp(tokAux, "bcompress")) {
+            bcompress_cur--;
+            if(bcompress_cur<0) bcompress_cur = 0;
+        }
+        if (!strcmp(tokAux, "bdecompress")) {
+            bdecompress_cur--;
+            if(bdecompress_cur<0) bdecompress_cur = 0;
+        }
+        if (!strcmp(tokAux, "gcompress")) {
+            gcompress_cur--;
+            if(gcompress_cur<0) gcompress_cur = 0;
+        }
+        if (!strcmp(tokAux, "gdecompress")) {
+            gdecompress_cur--;
+            if(gdecompress_cur<0) gdecompress_cur = 0;
+        }
+        if (!strcmp(tokAux, "encrypt")) {
+            encrypt_cur--;
+            if(encrypt_cur<0) encrypt_cur = 0;
+        }
+        if (!strcmp(tokAux, "decrypt")) {
+            decrypt_cur--;
+            if(decrypt_cur<0) decrypt_cur = 0;
+        }
     }
     free(dup);
 }
 
+
+
+ 
 //Retorna 1 se tivermos filtros disponiveis para executar a transformação.
 //Basta um filtro não estar disponível e a função retorna 0 (0 -> não há disponibilidade para execução do comando).
 int check_disponibilidade (char *command) {
@@ -547,7 +573,7 @@ int main(int argc, char *argv[]) {
     }
     //child_handler
     //SIG_IGN
-    if (signal(SIGCHLD, SIG_IGN) == SIG_ERR) {
+    if (signal(SIGCHLD, child_handler) == SIG_ERR) {
         perror("[signal] erro da associação do sigchld_handler.");
         exit(-1);
     }
@@ -611,7 +637,7 @@ int main(int argc, char *argv[]) {
         leitura = read(pipe_ler_cliente,comando,sizeof(comando));
 
         //Handling de erro no caso de ocorrer algum problema na leitura.
-        if(leitura == -1) perror("Erro no read");        
+        //if(leitura == -1) perror("Erro no read");        
         
         comando[leitura] = 0;
 

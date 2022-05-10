@@ -580,8 +580,10 @@ int monitor(char *input, char *output, char **argumentos, char *pid)
 }
 
 // Função da opção de obter informação de utilização do servidor
-void status(char *pid)
-{
+void status(char *pid) {
+
+    int pidServer = getpid();
+
     int f = fork();
     if (f == 0)
     {
@@ -620,8 +622,8 @@ void status(char *pid)
         strcat(res, mensagem);
         sprintf(mensagem, "Transf decrypt: %d/%d (Running/Max) \n", decrypt_cur, maxdecrypt);
         strcat(res, mensagem);
-        // sprintf(mensagem, "pid: %d\n", getpid());
-        // strcat(res, mensagem);
+        sprintf(mensagem, "pid: %d\n", pidServer);
+        strcat(res, mensagem);
         strcat(res, "\0");
         write(pipe_escrever, res, strlen(res) + 1);
 

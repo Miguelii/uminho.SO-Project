@@ -158,7 +158,7 @@ void child_handler(int signum)
     pid_t pid;
     int status;
 
-    printf("child_handler inicio!\n");
+
     wait(&status);
     // while((pid = waitpid(-1, &status, WNOHANG)) > 0);
 
@@ -166,16 +166,12 @@ void child_handler(int signum)
     {
         freeSlots(inProcess[nProcesses - 1]);
     }
-    printf("child_handler fim!\n");
-
-    printf("Queue size: %d\n", q->size);
-    printf("Queue first: %d\n", q->first);
 
     // se a queue tiver elementos ordena a queue, depois dá dequeue do primeiro elemento (mais prioridade) e executa o comando
     if (q->size > 0)
     {
         orderQueue(q);
-        printf("\n\n--QUEUE--\n\n");
+        //printf("\n\n--QUEUE--\n\n");
         printQueue(q);
 
         Process p = dequeue(q);
@@ -461,7 +457,7 @@ char **setArgs(char *resto)
 // Handler dos filhos
 void fecharfilho(char *pid)
 {
-    printf("Filho fechado!\n");
+    //printf("Filho fechado!\n");
 
     kill(getpid(), SIGUSR1);
     kill(atoi(pid), SIGUSR2);
@@ -533,8 +529,6 @@ void execs(int input, int output, char **argumentos)
 int monitor(char *input, char *output, char **argumentos, char *pid)
 {
 
-    printf("[DEBUG input] %s \n", input);
-    printf("[DEBUG output] %s \n", output);
     int f = fork();
     if (f == -1)
     {
@@ -655,17 +649,13 @@ int procfile(char *pid, char *comando, int pipe_escrever)
         write(pipe_escrever, "Pending...\n", strlen("Pending...\n"));
     }
 
-    printf("[DEBUG Comando Inicial] %s \n", comando);
-
     char *auxComando;
-    int hasPriority = -1;
     int prio = 0;
 
     // Verificar se o comando tem prioridade
     if (comando[10] == '-' && comando[11] == 'p')
     {
 
-        hasPriority = 0;
         char *args = strdup(comando);
         strsep(&args, " ");
         strsep(&args, " ");
@@ -675,10 +665,10 @@ int procfile(char *pid, char *comando, int pipe_escrever)
     }
     else
     {
-        hasPriority = -1;
         char *args = strdup(comando);
         strsep(&args, " ");
         auxComando = strsep(&args, "\n");
+        prio = 1; // Se nao tiver prioridade é atribuido o valor de 1
     }
 
     // verificar se o comando nao excede os maximos de filtros
@@ -686,13 +676,12 @@ int procfile(char *pid, char *comando, int pipe_escrever)
     {
         write(pipe_escrever, "A transformação pedida excede algum dos limites estabelecidos do Servidor. Verifique o status!\n", strlen("A transformação pedida excede algum dos limites estabelecidos do Servidor. Verifique o status!\n"));
         close(pipe_escrever);
+        return -1;
     }
 
     // Verifica se temos filtros suficientes para executar o comando
     if (check_disponibilidade(strdup(auxComando)) == 1)
     {
-
-        printf("[DEBUG Comando Fim] %s \n", auxComando);
 
         char *args = strdup(auxComando);
         char *input = strsep(&args, " ");  // Guarda o nome e path do ficheiro de input.
@@ -720,13 +709,14 @@ int procfile(char *pid, char *comando, int pipe_escrever)
         close(pipe_escrever);
     }
     else
-    {
+    {   
         // Adicionar pedido à queue
         Process *p = malloc(sizeof(Process));
         p->pid = strdup(pid);
         p->comando = strdup(comando);
         p->pipe_escrever = pipe_escrever;
         p->prioridade = prio;
+
         enqueue(q, *p);
     }
 

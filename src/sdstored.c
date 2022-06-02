@@ -149,6 +149,10 @@ void term_handler(int signum)
     unlink("/tmp/main");
 
     write(1, "\nA terminar servidor.\n", strlen("\nA terminar servidor.\n"));
+
+    int status;
+    while(q->size > 0) wait(&status);
+
     _exit(0);
 }
 
@@ -158,9 +162,7 @@ void child_handler(int signum)
     pid_t pid;
     int status;
 
-
     wait(&status);
-    // while((pid = waitpid(-1, &status, WNOHANG)) > 0);
 
     if (nProcesses > 0)
     {
@@ -172,7 +174,7 @@ void child_handler(int signum)
     {
         orderQueue(q);
         //printf("\n\n--QUEUE--\n\n");
-        printQueue(q);
+        //printQueue(q);
 
         Process p = dequeue(q);
         procfileAux(&p);
@@ -574,9 +576,9 @@ int monitor(char *input, char *output, char **argumentos, char *pid)
 }
 
 // Função da opção de obter informação de utilização do servidor
-void status(char *pid) {
-
-    int pidServer = getpid();
+void status(char *pid)
+{   
+    int pidd = getpid();
 
     int f = fork();
     if (f == 0)
@@ -616,7 +618,7 @@ void status(char *pid) {
         strcat(res, mensagem);
         sprintf(mensagem, "Transf decrypt: %d/%d (Running/Max) \n", decrypt_cur, maxdecrypt);
         strcat(res, mensagem);
-        sprintf(mensagem, "pid: %d\n", pidServer);
+        sprintf(mensagem, "pid: %d\n", pidd);
         strcat(res, mensagem);
         strcat(res, "\0");
         write(pipe_escrever, res, strlen(res) + 1);
@@ -649,13 +651,16 @@ int procfile(char *pid, char *comando, int pipe_escrever)
         write(pipe_escrever, "Pending...\n", strlen("Pending...\n"));
     }
 
+
     char *auxComando;
+    int hasPriority = -1;
     int prio = 0;
 
     // Verificar se o comando tem prioridade
     if (comando[10] == '-' && comando[11] == 'p')
     {
 
+        hasPriority = 0;
         char *args = strdup(comando);
         strsep(&args, " ");
         strsep(&args, " ");
@@ -665,10 +670,10 @@ int procfile(char *pid, char *comando, int pipe_escrever)
     }
     else
     {
+        hasPriority = -1;
         char *args = strdup(comando);
         strsep(&args, " ");
         auxComando = strsep(&args, "\n");
-        prio = 1; // Se nao tiver prioridade é atribuido o valor de 1
     }
 
     // verificar se o comando nao excede os maximos de filtros
@@ -676,12 +681,12 @@ int procfile(char *pid, char *comando, int pipe_escrever)
     {
         write(pipe_escrever, "A transformação pedida excede algum dos limites estabelecidos do Servidor. Verifique o status!\n", strlen("A transformação pedida excede algum dos limites estabelecidos do Servidor. Verifique o status!\n"));
         close(pipe_escrever);
-        return -1;
     }
 
     // Verifica se temos filtros suficientes para executar o comando
     if (check_disponibilidade(strdup(auxComando)) == 1)
     {
+
 
         char *args = strdup(auxComando);
         char *input = strsep(&args, " ");  // Guarda o nome e path do ficheiro de input.
@@ -709,14 +714,13 @@ int procfile(char *pid, char *comando, int pipe_escrever)
         close(pipe_escrever);
     }
     else
-    {   
+    {
         // Adicionar pedido à queue
         Process *p = malloc(sizeof(Process));
         p->pid = strdup(pid);
         p->comando = strdup(comando);
         p->pipe_escrever = pipe_escrever;
         p->prioridade = prio;
-
         enqueue(q, *p);
     }
 

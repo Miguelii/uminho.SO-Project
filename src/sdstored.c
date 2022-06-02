@@ -681,6 +681,7 @@ int procfile(char *pid, char *comando, int pipe_escrever)
     {
         write(pipe_escrever, "A transformação pedida excede algum dos limites estabelecidos do Servidor. Verifique o status!\n", strlen("A transformação pedida excede algum dos limites estabelecidos do Servidor. Verifique o status!\n"));
         close(pipe_escrever);
+        return -1;
     }
 
     // Verifica se temos filtros suficientes para executar o comando

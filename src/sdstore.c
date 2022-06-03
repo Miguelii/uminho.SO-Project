@@ -11,6 +11,7 @@
 // CLIENT
 
 // ./bin/sdstore status
+// ./bin/sdstore proc-file
 
 void reverse(char s[])
 {

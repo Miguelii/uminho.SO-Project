@@ -559,7 +559,7 @@ int monitor(char *input, char *output, char **argumentos, char *pid)
             _exit(-1);
         }
 
-        sleep(5); // utilizado para conseguirmos executar o status com sentido caso contrário os comandos eram instantaneos e nao conseguiamos ver os status
+        sleep(10); // utilizado para conseguirmos executar o status com sentido caso contrário os comandos eram instantaneos e nao conseguiamos ver os status
         execs(input_f, output_f, argumentos);
         _exit(0);
     }
@@ -681,6 +681,7 @@ int procfile(char *pid, char *comando, int pipe_escrever)
     {
         write(pipe_escrever, "A transformação pedida excede algum dos limites estabelecidos do Servidor. Verifique o status!\n", strlen("A transformação pedida excede algum dos limites estabelecidos do Servidor. Verifique o status!\n"));
         close(pipe_escrever);
+        return -1;
     }
 
     // Verifica se temos filtros suficientes para executar o comando
@@ -824,8 +825,6 @@ int main(int argc, char *argv[])
         perror("[signal] erro da associação do signint_handler.");
         exit(-1);
     }
-    // child_handler
-    // SIG_IGN
     if (signal(SIGCHLD, child_handler) == SIG_ERR)
     {
         perror("[signal] erro da associação do sigchld_handler.");

@@ -843,11 +843,6 @@ int main(int argc, char *argv[])
     if (pipe == -1)
         perror("/tmp/main");
 
-    // Setup da função poll()
-    struct pollfd *pfd = calloc(1, sizeof(struct pollfd));
-    pfd->fd = pipe;
-    pfd->events = POLLIN;
-    pfd->revents = POLLOUT;
 
     int leitura = 0;
 
